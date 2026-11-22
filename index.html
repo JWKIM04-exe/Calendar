@@ -154,6 +154,7 @@ dialog h3{margin:0 0 14px;font-family:"Noto Serif KR",serif;font-size:21px}
 dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{background:var(--pink);color:var(--paper)}
 .f{display:grid;gap:10px}.f label{font-size:13px;color:var(--psub)}
 .f input,.f select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-size:16px;color:var(--pink);background:#fffdf6;border:1px solid var(--rule);border-radius:4px}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;opacity:0}
 .fhint{margin:0;font-size:13px;color:var(--psub)}.fhint:empty,.ferr:empty{display:none}
 .ferr{margin:0;font-size:14px;color:#a02020;font-weight:500}
 .row .lo{margin-right:auto}
@@ -222,7 +223,8 @@ textarea:disabled{opacity:.6}
       <div><label for="jSt">복무 시작일</label><input id="jSt" type="date"></div>
       <div><label for="jEn">복무 종료일 (비우면 36개월 자동)</label><input id="jEn" type="date"></div>
     </div>
-    <div><label for="jPw" id="jPwL">비밀번호</label><input id="jPw" type="password" maxlength="64"></div>
+    <input id="jUser" class="sr" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
+    <div><label for="jPw" id="jPwL">비밀번호</label><input id="jPw" name="password" type="password" maxlength="64"></div>
     <div id="pw2Wrap"><label for="jPw2">비밀번호 확인</label><input id="jPw2" type="password" maxlength="64" autocomplete="new-password"></div>
     <p class="fhint" id="jHint"></p>
     <p class="ferr" id="jErr" role="alert"></p>

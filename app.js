@@ -254,7 +254,7 @@ function joinShow(mode) {
   $('logout').hidden = !edit;
   $('jPwL').textContent = edit ? '새 비밀번호 (바꿀 때만 입력)' : isNew ? '비밀번호 (4자 이상)' : '비밀번호';
   $('jPw').autocomplete = login ? 'current-password' : 'new-password';
-  $('jHint').textContent = login ? '아직 비밀번호를 정하지 않았다면, 지금 입력한 비밀번호가 내 비밀번호로 정해져요.' : edit ? '' : '이 비밀번호를 알아야 내 일정을 고칠 수 있어요.';
+  $('jHint').textContent = login ? '아직 비밀번호를 정하지 않았다면, 지금 입력한 비밀번호가 내 비밀번호로 정해져요. 한 번 로그인하면 로그아웃 전까지 이 기기에서 계속 로그인돼 있어요.' : edit ? '' : '이 비밀번호를 알아야 내 일정을 고칠 수 있어요.';
   $('joinOk').textContent = edit ? '저장' : isNew ? '등록' : '로그인';
   $('jErr').textContent = '';
 }
@@ -271,9 +271,31 @@ function openJoin() {
     ['jName', 'jOrg', 'jRoom', 'jSt', 'jEn'].forEach(id => { $(id).value = ''; });
     joinShow($('pick').value === '__new' ? 'new' : 'login');
   }
+  syncUser();
   $('joinDlg').showModal();
+  if (joinMode === 'login') fillSaved();
 }
-$('pick').addEventListener('change', () => joinShow($('pick').value === '__new' ? 'new' : 'login'));
+const syncUser = () => {
+  $('jUser').value = joinMode === 'login' ? (members.find(x => x.id === $('pick').value)?.name || '') : $('jName').value.trim();
+};
+$('pick').addEventListener('change', () => { joinShow($('pick').value === '__new' ? 'new' : 'login'); syncUser(); });
+$('jName').addEventListener('input', syncUser);
+
+// 브라우저·휴대폰에 저장된 비밀번호 불러오기 / 저장하기
+async function fillSaved() {
+  if (!window.PasswordCredential || !navigator.credentials) return;
+  try {
+    const c = await navigator.credentials.get({ password: true, mediation: 'optional' });
+    if (!c || joinMode !== 'login' || !$('joinDlg').open) return;
+    const m = members.find(x => x.name === c.id); if (!m) return;
+    $('pick').value = m.id; syncUser(); $('jPw').value = c.password || '';
+    $('jHint').textContent = '저장된 비밀번호를 채웠어요. 로그인을 누르세요.';
+  } catch {}
+}
+async function savePw(name, pw) {
+  if (!window.PasswordCredential || !navigator.credentials || !pw) return;
+  try { await navigator.credentials.store(new PasswordCredential({ id: name, password: pw, name })); } catch {}
+}
 $('joinFrm').addEventListener('submit', async e => {
   e.preventDefault();
   const pw = $('jPw').value, pw2 = $('jPw2').value, say = m => { $('jErr').textContent = m; };
@@ -288,18 +310,21 @@ $('joinFrm').addEventListener('submit', async e => {
       const id = $('pick').value; if (!id) return say('이름을 골라 주세요.');
       const token = await store.login(id, pw);
       lsSet(SESS_KEY + '-last', id); setSession(id, token); toast('로그인했어요');
+      savePw(nameOf(id), pw);
     } else if (joinMode === 'new') {
       const m = info(); if (!m.name) return say(ERR.NAME_EMPTY);
       if (pw.length < 4) return say(ERR.PW_SHORT);
       if (pw !== pw2) return say('비밀번호 확인이 달라요.');
       const r = await store.register({ ...m, pw });
       lsSet(SESS_KEY + '-last', r.id); setSession(r.id, r.token); toast('등록했어요');
+      savePw(m.name, pw);
     } else {
       const m = info(); if (!m.name) return say(ERR.NAME_EMPTY);
       if (pw && pw.length < 4) return say(ERR.PW_SHORT);
       if (pw && pw !== pw2) return say('새 비밀번호 확인이 달라요.');
       await store.saveMember({ ...m, newPw: pw || null });
       toast(pw ? '저장했어요 (비밀번호 변경됨)' : '저장했어요');
+      if (pw) savePw(m.name, pw);
     }
     $('joinDlg').close();
   } catch (x) {
