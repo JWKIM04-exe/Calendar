@@ -105,7 +105,6 @@ function localStore() {
 }
 
 /* ---------- 상태 ---------- */
-let editStay = null;
 let store, members = [], week = { events: [], stays: [], memos: [] };
 let me = lsGet(ME_KEY), filter = 'all', cur = monday(new Date()), unWeek = null, target = null;
 const colorOf = id => { const i = members.findIndex(m => m.id === id); return COLORS[(i < 0 ? 0 : i) % COLORS.length]; };
@@ -130,14 +129,9 @@ function renderMembers() {
 }
 
 function stayCtl(date, n, myStay) {
-  if (editStay === date) {
-    const cur = STAY_L[myStay] ? '' : myStay;
-    return `<div class="stayEdit"><input data-stayin="${date}" maxlength="30" value="${esc(cur)}" placeholder="예: 본가, 병원, 교육 출장" aria-label="${n}요일 거주 형태 직접 입력">
-      <button class="pri" data-staysave="${date}">저장</button><button data-staycancel="1">취소</button></div>`;
-  }
-  const custom = !STAY_L[myStay];
-  return `<select data-stay="${date}" aria-label="${n}요일 내 거주 형태">${STAY.map(([v, l]) => `<option value="${v}" ${myStay === v ? 'selected' : ''}>나: ${l}</option>`).join('')}
-    ${custom ? `<option value="${esc(myStay)}" selected>나: ${esc(myStay)}</option>` : ''}<option value="__custom">직접 입력…</option></select>`;
+  // 기본값(시설 합숙)은 빈칸으로 두고 안내 문구만 보여줌
+  const v = myStay === 'in' ? '' : (STAY_L[myStay] || myStay);
+  return `<input class="stayIn" data-stayin="${date}" maxlength="30" value="${esc(v)}" placeholder="어디서 지내요? (비우면 시설 합숙)" aria-label="${n}요일 내 거주 형태" enterkeyhint="done">`;
 }
 
 function renderWeek() {
@@ -173,9 +167,9 @@ function watchWeek() {
   if (unWeek) unWeek();
   unWeek = store.watchWeek(ymd(cur), ymd(addDays(cur, 6)), w => {
     week = { ...w };
-    // 드롭다운을 열어 둔 채로 새로고침되면 닫혀 버리니, 고르는 중이면 다음 갱신 때 그림
+    // 입력하는 중에 새로고침되면 글이 지워지니, 입력 중이면 다음 갱신 때 그림
     const a = document.activeElement;
-    if (a && (a.tagName === 'SELECT' || a.dataset?.stayin) && $('week').contains(a)) return;
+    if (a && a.dataset?.stayin && $('week').contains(a)) return;
     renderWeek();
   });
   renderWeek();
@@ -213,30 +207,25 @@ $('editMe').addEventListener('click', openJoin);
 const run = p => Promise.resolve(p).catch(err => banner('저장 실패: ' + err.message, true));
 $('week').addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.stay) {
-    if (t.value === '__custom') { editStay = t.dataset.stay; renderWeek(); document.querySelector(`[data-stayin="${editStay}"]`)?.focus(); }
-    else run(store.setStay(me, t.dataset.stay, t.value));
-  }
+  if (t.dataset.stayin) saveStay(t.dataset.stayin);
   if (t.dataset.chk) run(store.updateEvent(t.dataset.chk, { done: t.checked }));
 });
 $('week').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.add) { target = b.dataset.add; const d = new Date(target); $('evT').textContent = `${d.getMonth() + 1}/${d.getDate()} 일정 추가`; $('evFrm').reset(); $('evDlg').showModal(); $('fText').focus(); }
   if (b.dataset.del) run(store.deleteEvent(b.dataset.del));
-  if (b.dataset.staysave) saveStay(b.dataset.staysave);
-  if (b.dataset.staycancel) { editStay = null; renderWeek(); }
 });
 function saveStay(date) {
   const v = (document.querySelector(`[data-stayin="${date}"]`)?.value || '').trim().slice(0, 30);
-  editStay = null;
-  // 기본 항목 이름을 그대로 쓰면 기본값으로 저장
   const preset = STAY.find(([, l]) => l === v);
-  if (v) { week.stays = week.stays.filter(x => !(x.member === me && x.date === date)).concat({ member: me, date, stay: preset ? preset[0] : v }); run(store.setStay(me, date, preset ? preset[0] : v)); }
-  renderWeek();
+  const stay = !v ? 'in' : preset ? preset[0] : v;
+  const prev = week.stays.find(x => x.member === me && x.date === date)?.stay || 'in';
+  if (stay === prev) return;
+  week.stays = week.stays.filter(x => !(x.member === me && x.date === date)).concat({ member: me, date, stay });
+  run(store.setStay(me, date, stay).then(() => toast('저장했어요')));
 }
 $('week').addEventListener('keydown', e => {
-  if (e.target.dataset.stayin && e.key === 'Enter') { e.preventDefault(); saveStay(e.target.dataset.stayin); }
-  if (e.target.dataset.stayin && e.key === 'Escape') { editStay = null; renderWeek(); }
+  if (e.target.dataset.stayin && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
 $('evFrm').addEventListener('submit', e => {
   e.preventDefault(); const text = $('fText').value.trim(); if (!text) return;
