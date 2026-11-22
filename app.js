@@ -88,6 +88,7 @@ async function supabaseStore(url, key) {
     addEvent: e => after(rpc('cal_add_event', { p_token: token, p_date: e.date, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null })),
     updateEvent: (id, p) => after(rpc('cal_update_event', { p_token: token, p_id: id, p_done: !!p.done })),
     deleteEvent: id => after(rpc('cal_delete_event', { p_token: token, p_id: id })),
+    editEvent: (id, e) => after(rpc('cal_edit_event', { p_token: token, p_id: id, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null })),
     setStay: (member, date, stay) => after(rpc('cal_set_stay', { p_token: token, p_date: date, p_stay: stay })),
     setMemo: (member, week, data) => after(rpc('cal_set_memo', { p_token: token, p_week: week, p_goal: data.goal, p_memo: data.memo })),
     loadRange: async (start, end) => {
@@ -146,6 +147,7 @@ function localStore() {
     addEvent: async e => { d.events[uid()] = { ...e, owner: me, done: false }; put(); },
     updateEvent: async (id, p) => { Object.assign(d.events[id], p); put(); },
     deleteEvent: async id => { delete d.events[id]; put(); },
+    editEvent: async (id, e) => { const x = d.events[id]; if (!x || x.owner !== me) throw err('NOT_OWNER'); Object.assign(x, { time: e.time, text: e.text, kind: e.kind, color: e.color || null }); put(); },
     setStay: async (member, date, stay) => { d.stays[`${member}_${date}`] = { member, date, stay }; put(); },
     setMemo: async (member, week, data) => { const k = `${member}_${week}`; d.memos[k] = { ...d.memos[k], member, week, ...data }; put(); },
     loadRange: async (start, end) => ({
@@ -204,7 +206,7 @@ function renderWeek() {
       ${others.length ? `<div class="stays">${others.map(s => `<span style="border-color:${colorOf(s.member)}">${esc(nameOf(s.member))} ${esc(STAY_L[s.stay] || s.stay)}</span>`).join('')}</div>` : ''}
       <ul>${evs.length ? evs.map(e => `<li class="${e.done ? 'done' : ''}" style="--c:${evColor(e)}">
         ${e.owner === me ? `<input type="checkbox" data-chk="${esc(e.id)}" ${e.done ? 'checked' : ''} aria-label="완료">` : ''}
-        <span class="m"><span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span>
+        ${e.owner === me ? `<button type="button" class="m ed" data-edit="${esc(e.id)}" aria-label="일정 수정: ${esc(e.text)}">` : '<span class="m">'}<span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}${e.owner === me ? '</button>' : '</span>'}
         ${e.owner === me ? `<button class="x" data-del="${esc(e.id)}" aria-label="삭제">×</button>` : ''}</li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>
       ${me ? `<button class="add" data-add="${date}">+ 일정 추가</button>` : ''}
     </section>`;
@@ -349,7 +351,8 @@ $('week').addEventListener('change', e => {
 });
 $('week').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.add) { target = b.dataset.add; const d = new Date(target); $('evT').textContent = `${d.getMonth() + 1}/${d.getDate()} 일정 추가`; $('evFrm').reset(); renderSwatches(); $('evDlg').showModal(); $('fText').focus(); }
+  if (b.dataset.edit) { openEdit(b.dataset.edit); return; }
+  if (b.dataset.add) { editId = null; $('evOk').textContent = '저장'; target = b.dataset.add; const d = new Date(target); $('evT').textContent = `${d.getMonth() + 1}/${d.getDate()} 일정 추가`; $('evFrm').reset(); renderSwatches(); $('evDlg').showModal(); $('fText').focus(); }
   if (b.dataset.del) run(store.deleteEvent(b.dataset.del));
 });
 function saveStay(date) {
@@ -368,8 +371,8 @@ $('week').addEventListener('keydown', e => {
 const SWATCHES = ['#2f6fdf', '#1f9d6b', '#e8572a', '#d23c3c', '#d23c7a', '#9b4fd6', '#d6a21f', '#2aa6b8', '#7a4b2a', '#1f2723'];
 const COLOR_KEY = 'daechae-last-color';
 let pickColor = null;
-function renderSwatches() {
-  const last = lsGet(COLOR_KEY);
+function renderSwatches(initial) {
+  const last = initial !== undefined ? initial : lsGet(COLOR_KEY);
   pickColor = /^#[0-9a-f]{6}$/i.test(last || '') ? last : null;
   const mine = colorOf(me);
   const custom = pickColor && !SWATCHES.includes(pickColor);
@@ -393,10 +396,31 @@ $('fColors').addEventListener('input', e => {
   $('fColorNow').style.background = pickColor;
 });
 
+let editId = null;
+function openEdit(id) {
+  const ev = week.events.find(x => x.id === id); if (!ev || ev.owner !== me) return;
+  editId = id; const d = new Date(ev.date);
+  $('evT').textContent = `${d.getMonth() + 1}/${d.getDate()} 일정 수정`;
+  $('evFrm').reset();
+  $('fTime').value = ev.time || ''; $('fText').value = ev.text || '';
+  if ([...$('fKind').options].some(o => o.value === ev.kind)) $('fKind').value = ev.kind;
+  renderSwatches(ev.color || null);
+  $('evOk').textContent = '수정';
+  $('evDlg').showModal(); $('fText').focus();
+}
 $('evFrm').addEventListener('submit', e => {
   e.preventDefault(); const text = $('fText').value.trim(); if (!text) return;
-  run(store.addEvent({ date: target, time: $('fTime').value, text, kind: $('fKind').value, owner: me, done: false, color: pickColor }));
-  if (pickColor) lsSet(COLOR_KEY, pickColor);
+  const data = { time: $('fTime').value, text, kind: $('fKind').value, color: pickColor };
+  if (editId) {
+    // 화면에 바로 반영하고 서버에 저장
+    const ev = week.events.find(x => x.id === editId); if (ev) Object.assign(ev, data, { color: pickColor || null });
+    run(store.editEvent(editId, data).then(() => toast('수정했어요')));
+    renderWeek();
+  } else {
+    run(store.addEvent({ date: target, ...data, owner: me, done: false }));
+    if (pickColor) lsSet(COLOR_KEY, pickColor);
+  }
+  editId = null;
   $('evDlg').close();
 });
 $('evCancel').addEventListener('click', () => $('evDlg').close());

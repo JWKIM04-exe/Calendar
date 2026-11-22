@@ -175,6 +175,16 @@ begin
   values (p_grp, p_date, nullif(p_time, ''), p_text, p_kind, m, case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end);
 end $$;
 
+create or replace function cal_edit_event(p_grp text, p_token text, p_id uuid, p_time text, p_text text, p_kind text, p_color text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare m text := cal_auth(p_grp, p_token);
+begin
+  update cal_events set time = nullif(p_time, ''), text = p_text, kind = p_kind,
+    color = case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end
+  where id = p_id and grp = p_grp and owner = m;
+  if not found then raise exception 'NOT_OWNER'; end if;
+end $$;
+
 create or replace function cal_update_event(p_grp text, p_token text, p_id uuid, p_done boolean)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare m text := cal_auth(p_grp, p_token);
@@ -213,6 +223,7 @@ grant execute on function cal_logout(text, text) to anon, authenticated;
 grant execute on function cal_save_member(text, text, text, text, text, date, date, text) to anon, authenticated;
 grant execute on function cal_add_event(text, text, date, text, text, text, text) to anon, authenticated;
 grant execute on function cal_update_event(text, text, uuid, boolean) to anon, authenticated;
+grant execute on function cal_edit_event(text, text, uuid, text, text, text, text) to anon, authenticated;
 grant execute on function cal_delete_event(text, text, uuid) to anon, authenticated;
 grant execute on function cal_set_stay(text, text, date, text) to anon, authenticated;
 grant execute on function cal_set_memo(text, text, date, text, text) to anon, authenticated;

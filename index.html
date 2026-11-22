@@ -165,6 +165,8 @@ dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{backg
 .sw.pick.on{background:var(--s)}
 .sw.pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
 .cnow{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-left:4px}
+.ed{all:unset;cursor:pointer;flex:1;min-width:0;border-radius:4px}
+.ed:hover{background:#00000008}.ed:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;opacity:0}
 .fhint{margin:0;font-size:13px;color:var(--psub)}.fhint:empty,.ferr:empty{display:none}
 .ferr{margin:0;font-size:14px;color:#a02020;font-weight:500}
@@ -253,7 +255,7 @@ textarea:disabled{opacity:.6}
     </select></div>
     <div><label>색 <span class="cnow" id="fColorNow"></span></label><div class="swatches" id="fColors"></div></div>
   </div>
-  <div class="row"><button type="button" id="evCancel">취소</button><button class="pri" type="submit">저장</button></div>
+  <div class="row"><button type="button" id="evCancel">취소</button><button class="pri" type="submit" id="evOk">저장</button></div>
 </form></dialog>
 
 <dialog id="monDlg" class="mon" aria-label="한 달 일정">
