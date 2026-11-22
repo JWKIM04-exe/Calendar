@@ -1,5 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230731';
-import { parseQuick } from './quick.js?v=2611230731';
+import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230737';
+import { parseQuick } from './quick.js?v=2611230737';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -82,7 +82,7 @@ async function supabaseStore(url, key) {
       const [events, stays, memos] = await Promise.all([
         sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color&order=created_at`),
         sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
-        sb(`cal_memos?${G}&week=eq.${start}&select=member,week,goal,memo`),
+        sb(`cal_memos?${G}&week=gte.${start}&week=lte.${end}&select=member,week,goal,memo`),
       ]);
       return { events, stays, memos };
     }, cb),
@@ -143,7 +143,7 @@ function localStore() {
     watchWeek: (start, end, cb) => sub(() => cb({
       events: vals(d.events).filter(e => e.date >= start && e.date <= end),
       stays: vals(d.stays).filter(s => s.date >= start && s.date <= end),
-      memos: vals(d.memos).filter(m => m.week === start),
+      memos: vals(d.memos).filter(m => m.week >= start && m.week <= end),
     })),
     addEvent: async e => { d.events[uid()] = { ...e, owner: me, done: false }; put(); },
     updateEvent: async (id, p) => { Object.assign(d.events[id], p); put(); },
@@ -190,18 +190,19 @@ function stayCtl(date, n, myStay) {
   return `<input class="stayIn" data-stayin="${date}" maxlength="30" value="${esc(v)}" placeholder="시설 합숙" aria-label="${n}요일 내 거주 형태" enterkeyhint="done">`;
 }
 
-function renderWeek() {
-  const end = addDays(cur, 6), today = ymd(new Date());
-  $('wk').textContent = `${cur.getFullYear()}년 ${cur.getMonth() + 1}월 ${cur.getDate()}일 – ${end.getMonth() + 1}월 ${end.getDate()}일`;
-  const show = e => filter === 'all' || e.owner === filter || e.kind === '공지';
-  const pw = addDays(cur, -7), nw = addDays(cur, 7);
-  $('week').innerHTML = `<button class="edge" data-go="-1"><span>‹</span>이전 주<small>${pw.getMonth() + 1}/${pw.getDate()} –</small></button>` + DAYS.map((n, i) => {
-    const date = ymd(addDays(cur, i)), d = addDays(cur, i);
-    const myStay = week.stays.find(s => s.member === me && s.date === date)?.stay || 'in';
-    const others = week.stays.filter(s => s.date === date && s.member !== me && s.stay !== 'in' && (filter === 'all' || s.member === filter));
-    const evs = week.events.filter(e => e.date === date && show(e)).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
-    return `<section class="day ${date === today ? 'today' : ''} ${i === 5 ? 'sat' : i === 6 ? 'sun' : ''}">
-      <div class="dh"><span class="en">${EN[i]}</span><span class="ko">${n}</span>${i === 6 ? `<span class="yr">${d.getFullYear()}</span>` : d.getDate() === 1 || i === 0 ? `<span class="mo">${d.getMonth() + 1}월</span>` : ''}</div>
+/* ---------- 이어지는 날짜 띠 ----------
+   여러 주를 한 줄로 이어 붙여 보여 주고, 끝에 가까워지면 앞뒤로 더 붙인다. */
+let rStart = addDays(monday(new Date()), -35), rWeeks = 11;
+const rEnd = () => addDays(rStart, rWeeks * 7 - 1);
+const showEv = e => filter === 'all' || e.owner === filter || e.kind === '공지';
+
+function dayHtml(d, today) {
+  const i = (d.getDay() + 6) % 7, n = DAYS[i], date = ymd(d);
+  const myStay = week.stays.find(s => s.member === me && s.date === date)?.stay || 'in';
+  const others = week.stays.filter(s => s.date === date && s.member !== me && s.stay !== 'in' && (filter === 'all' || s.member === filter));
+  const evs = week.events.filter(e => e.date === date && showEv(e)).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+  return `<section class="day ${date === today ? 'today' : ''} ${i === 5 ? 'sat' : i === 6 ? 'sun' : ''}" data-date="${date}">
+      <div class="dh"><span class="en">${EN[i]}</span><span class="ko">${n}</span>${d.getMonth() === 0 && d.getDate() === 1 || i === 6 ? `<span class="yr">${d.getFullYear()}</span>` : d.getDate() === 1 || i === 0 ? `<span class="mo">${d.getMonth() + 1}월</span>` : ''}</div>
       <div class="num"><span>${d.getDate()}</span></div>
       ${me ? stayCtl(date, n, myStay) : ''}
       ${others.length ? `<div class="stays">${others.map(s => `<span style="border-color:${colorOf(s.member)}">${esc(nameOf(s.member))} ${esc(STAY_L[s.stay] || s.stay)}</span>`).join('')}</div>` : ''}
@@ -211,14 +212,30 @@ function renderWeek() {
         ${e.owner === me ? `<button class="x" data-del="${esc(e.id)}" aria-label="삭제">×</button>` : ''}</li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>
       ${me ? `<button class="add" data-add="${date}">+ 일정 추가</button>` : ''}
     </section>`;
-  }).join('') + `<button class="edge" data-go="1"><span>›</span>다음 주<small>${nw.getMonth() + 1}/${nw.getDate()} –</small></button>`;
-  afterRender();
-  const mine = week.memos.find(m => m.member === me) || {};
+}
+
+// 다시 그려도 보고 있던 날짜가 그 자리에 그대로 있게
+function renderDays() {
+  const w = $('week'), anchor = firstVisible();
+  const delta = anchor ? anchor.offsetLeft - w.scrollLeft : 0, aDate = anchor?.dataset.date;
+  const today = ymd(new Date());
+  let html = '';
+  for (let k = 0; k < rWeeks * 7; k++) html += dayHtml(addDays(rStart, k), today);
+  w.innerHTML = html;
+  if (aDate) { const el = w.querySelector(`[data-date="${aDate}"]`); if (el) w.scrollLeft = el.offsetLeft - delta; }
+}
+
+function renderWeekInfo() {
+  const end = addDays(cur, 6), wk = ymd(cur);
+  $('wk').textContent = `${cur.getFullYear()}년 ${cur.getMonth() + 1}월 ${cur.getDate()}일 – ${end.getMonth() + 1}월 ${end.getDate()}일`;
+  const mine = week.memos.find(m => m.member === me && m.week === wk) || {};
   if (document.activeElement !== $('goal')) $('goal').value = mine.goal || '';
   if (document.activeElement !== $('memo')) $('memo').value = mine.memo || '';
-  const os = week.memos.filter(m => m.member !== me && (m.goal || m.memo) && (filter === 'all' || m.member === filter));
+  const os = week.memos.filter(m => m.week === wk && m.member !== me && (m.goal || m.memo) && (filter === 'all' || m.member === filter));
   $('others').innerHTML = os.map(m => `<div><b><span class="dot" style="background:${colorOf(m.member)}"></span>${esc(nameOf(m.member))}의 이번 주</b>${m.goal ? '목표: ' + esc(m.goal) + '\n' : ''}${esc(m.memo || '')}</div>`).join('');
 }
+
+function renderWeek() { renderDays(); renderWeekInfo(); }
 
 function render() {
   $('editMe').textContent = me ? '내 정보' : '로그인';
@@ -231,11 +248,12 @@ function render() {
 
 function watchWeek() {
   if (unWeek) unWeek();
-  unWeek = store.watchWeek(ymd(cur), ymd(addDays(cur, 6)), w => {
+  unWeek = store.watchWeek(ymd(rStart), ymd(rEnd()), w => {
     week = { ...w };
+    if (jumping) { pendingRender = true; return; }
     // 입력하는 중에 새로고침되면 글이 지워지니, 입력 중이면 다음 갱신 때 그림
     const a = document.activeElement;
-    if (a && a.dataset?.stayin && $('week').contains(a)) return;
+    if (a && a.dataset?.stayin && $('week').contains(a)) { renderWeekInfo(); return; }
     renderWeek();
   });
   renderWeek();
@@ -480,43 +498,68 @@ let memoT;
 }));
 
 $('members').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; renderMembers(); renderWeek(); } });
-/* ---------- 슬라이드 ---------- */
-let pendingScroll = 'today', edgeLock = false;
+/* ---------- 슬라이드 (끊김 없이 이어서) ---------- */
 const dayEls = () => [...$('week').querySelectorAll('.day')];
-function goWeek(dir) {
-  if (edgeLock) return; edgeLock = true; setTimeout(() => { edgeLock = false; }, 700);
-  cur = addDays(cur, 7 * dir); pendingScroll = dir > 0 ? 'start' : 'end'; watchWeek();
+const dayW = () => dayEls()[0]?.getBoundingClientRect().width || 1;
+function firstVisible() {
+  const w = $('week'), els = dayEls(); if (!els.length) return null;
+  const i = Math.max(0, Math.min(els.length - 1, Math.round(w.scrollLeft / dayW())));
+  return els[i];
 }
-function scrollToDay(i, smooth) {
-  const w = $('week'), d = dayEls()[i]; if (!d) return;
-  const last = dayEls()[6], max = last.offsetLeft + last.offsetWidth - w.clientWidth;
-  w.scrollTo({ left: Math.min(d.offsetLeft, max), behavior: smooth ? 'smooth' : 'auto' });
+const visibleCount = () => Math.max(1, Math.round($('week').clientWidth / dayW()));
+
+// 날짜로 이동 (넓은 화면은 그 주 월요일부터, 좁은 화면은 그 날부터)
+let jumping = false, jumpT = 0, pendingRender = false;
+function scrollToDate(ds, smooth) {
+  const d = new Date(ds), w = $('week');
+  if (d < addDays(rStart, 7) || d > addDays(rEnd(), -7)) { rStart = addDays(monday(d), -35); rWeeks = 11; watchWeek(); smooth = false; }
+  const target = visibleCount() >= 7 ? ymd(monday(d)) : ds;
+  const el = w.querySelector(`[data-date="${target}"]`); if (!el) return;
+  const far = Math.abs(el.offsetLeft - w.scrollLeft) > dayW() * 10;
+  const anim = smooth && !far;
+  // 이동하는 동안에는 다시 그리거나 늘리지 않기 (움직임이 끊기지 않게)
+  jumping = true; clearTimeout(jumpT);
+  jumpT = setTimeout(() => { jumping = false; onScroll(); if (pendingRender) { pendingRender = false; renderWeek(); } extendIfNeeded(); }, anim ? 700 : 60);
+  w.scrollTo({ left: el.offsetLeft, behavior: anim ? 'smooth' : 'auto' });
+  if (!anim) onScroll();
 }
-const edgeObs = new IntersectionObserver(es => {
-  for (const e of es) if (e.isIntersecting && e.intersectionRatio > 0.9 && !pendingScroll) goWeek(+e.target.dataset.go);
-}, { root: $('week'), threshold: [0.9] });
-function afterRender() {
-  const w = $('week');
-  w.querySelectorAll('.edge').forEach(el => edgeObs.observe(el));
-  if (!pendingScroll) return;
-  const mode = pendingScroll;
-  requestAnimationFrame(() => {
-    if (mode === 'start') scrollToDay(0);
-    else if (mode === 'end') { const d = dayEls()[6]; w.scrollTo({ left: d.offsetLeft + d.offsetWidth - w.clientWidth }); }
-    else if (typeof mode === 'object') scrollToDay(mode.day);
-    else { const t = dayEls().findIndex(d => d.classList.contains('today')); scrollToDay(t < 0 ? 0 : Math.max(0, t)); }
-    setTimeout(() => { pendingScroll = null; }, 400);
-  });
+
+// 보고 있는 주에 맞춰 제목·메모 바꾸기
+function onScroll() {
+  const el = firstVisible(); if (!el) return;
+  const m = monday(new Date(el.dataset.date));
+  if (ymd(m) !== ymd(cur)) { cur = m; renderWeekInfo(); }
 }
-$('week').addEventListener('click', e => { const b = e.target.closest('.edge'); if (b) goWeek(+b.dataset.go); });
+// 멈췄을 때 끝에 가까우면 앞뒤로 4주씩 더 붙이기 (너무 길어지면 반대쪽은 덜어내기)
+function extendIfNeeded() {
+  const els = dayEls(); if (!els.length || jumping) return;
+  const i = Math.round($('week').scrollLeft / dayW()), vis = visibleCount();
+  let changed = false, shift = 0;
+  if (i < 14) { rStart = addDays(rStart, -28); rWeeks += 4; shift = 28; changed = true; }
+  if (i + vis > rWeeks * 7 - 14) { rWeeks += 4; changed = true; }
+  if (rWeeks > 24) {
+    // 보고 있는 곳을 가운데 두고 16주만 남기기
+    const firstWeek = Math.floor((i + shift) / 7);
+    const keepFrom = Math.max(0, firstWeek - 8);
+    rStart = addDays(rStart, keepFrom * 7); rWeeks = Math.min(rWeeks - keepFrom, 16);
+    changed = true;
+  }
+  if (changed) watchWeek();
+}
+let scrollRaf = 0, settleT = 0;
+$('week').addEventListener('scroll', () => {
+  if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; onScroll(); });
+  clearTimeout(settleT); settleT = setTimeout(extendIfNeeded, 180);
+}, { passive: true });
+
 addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,select,dialog')) return;
-  if (e.key === 'ArrowRight') $('week').scrollBy({ left: dayEls()[0].offsetWidth, behavior: 'smooth' });
-  if (e.key === 'ArrowLeft') $('week').scrollBy({ left: -dayEls()[0].offsetWidth, behavior: 'smooth' });
+  if (e.key === 'ArrowRight') $('week').scrollBy({ left: dayW(), behavior: 'smooth' });
+  if (e.key === 'ArrowLeft') $('week').scrollBy({ left: -dayW(), behavior: 'smooth' });
 });
-$('prev').addEventListener('click', () => goWeek(-1));
-$('next').addEventListener('click', () => goWeek(1));
-$('now').addEventListener('click', () => { cur = monday(new Date()); pendingScroll = 'today'; watchWeek(); });
+$('prev').addEventListener('click', () => scrollToDate(ymd(addDays(cur, -7)), true));
+$('next').addEventListener('click', () => scrollToDate(ymd(addDays(cur, 7)), true));
+$('now').addEventListener('click', () => scrollToDate(ymd(new Date()), true));
 $('invite').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}?g=${encodeURIComponent(group)}`;
   try { await navigator.clipboard.writeText(url); toast('초대 링크를 복사했어요'); } catch { prompt('이 링크를 공유하세요', url); }
@@ -584,8 +627,7 @@ $('monDlg').addEventListener('click', e => {
   const f = e.target.closest('[data-mf]'); if (f) { mFilter = f.dataset.mf; renderMonth(); return; }
   const c = e.target.closest('[data-md]'); if (c) { mSel = mSel === c.dataset.md ? null : c.dataset.md; renderMonth(); if (mSel) $('mDay').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
   if (e.target.closest('#mGo')) {
-    const d = new Date(mSel); cur = monday(d); pendingScroll = { day: (d.getDay() + 6) % 7 };
-    $('monDlg').close(); watchWeek();
+    const ds = mSel; $('monDlg').close(); scrollToDate(ds, false);
   }
 });
 $('mPrev').addEventListener('click', () => { mCur = new Date(mCur.getFullYear(), mCur.getMonth() - 1, 1); mSel = null; renderMonth(); mLoad(); });
@@ -618,3 +660,4 @@ store.watchMembers(list => {
   if (first) { first = false; if (me && !members.some(m => m.id === me)) setSession(null); if (!me) openJoin(); }
 });
 watchWeek();
+scrollToDate(ymd(new Date()), false);
