@@ -31,7 +31,7 @@ create table if not exists cal_stays (
   grp text not null check (char_length(grp) <= 40),
   member text not null check (char_length(member) <= 40),
   date date not null,
-  stay text not null check (stay in ('in', 'out', 'over', 'leave', 'home')),
+  stay text not null,
   primary key (grp, member, date)
 );
 
@@ -43,6 +43,10 @@ create table if not exists cal_memos (
   memo text check (char_length(memo) <= 2000),
   primary key (grp, member, week)
 );
+
+-- 거주 형태는 직접 입력도 가능 (최대 30자)
+alter table cal_stays drop constraint if exists cal_stays_stay_check;
+alter table cal_stays add constraint cal_stays_stay_check check (char_length(stay) between 1 and 30);
 
 -- 보안 규칙: 링크(그룹 코드)를 아는 사람은 누구나 읽고 쓸 수 있습니다.
 alter table cal_members enable row level security;
