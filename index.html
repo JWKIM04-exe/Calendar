@@ -154,6 +154,17 @@ dialog h3{margin:0 0 14px;font-family:"Noto Serif KR",serif;font-size:21px}
 dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{background:var(--pink);color:var(--paper)}
 .f{display:grid;gap:10px}.f label{font-size:13px;color:var(--psub)}
 .f input,.f select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-size:16px;color:var(--pink);background:#fffdf6;border:1px solid var(--rule);border-radius:4px}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}
+.sw{position:relative;width:34px;height:34px;min-height:0;padding:0;border-radius:50%;border:2px solid var(--paper);background:var(--s);box-shadow:0 0 0 1px var(--rule);cursor:pointer;flex:none}
+.sw.on{box-shadow:0 0 0 2px var(--pink)}
+.sw.on::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--paper);opacity:.9}
+.sw.auto{width:auto;padding:0 12px;border-radius:999px;background:transparent;font-size:13px;color:var(--pink);display:inline-flex;align-items:center;gap:6px}
+.sw.auto::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--s)}
+.sw.auto.on::after{display:none}
+.sw.pick{background:conic-gradient(#e8572a,#d6a21f,#1f9d6b,#2aa6b8,#2f6fdf,#9b4fd6,#d23c7a,#e8572a);overflow:hidden}
+.sw.pick.on{background:var(--s)}
+.sw.pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+.cnow{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-left:4px}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;opacity:0}
 .fhint{margin:0;font-size:13px;color:var(--psub)}.fhint:empty,.ferr:empty{display:none}
 .ferr{margin:0;font-size:14px;color:#a02020;font-weight:500}
@@ -240,6 +251,7 @@ textarea:disabled{opacity:.6}
     <div><label for="fKind">분류</label><select id="fKind">
       <option value="근무">근무</option><option value="교육·훈련">교육·훈련</option><option value="개인">개인 일정</option><option value="외출·외박">외출·외박·휴가</option><option value="공지">공지 (전체)</option>
     </select></div>
+    <div><label>색 <span class="cnow" id="fColorNow"></span></label><div class="swatches" id="fColors"></div></div>
   </div>
   <div class="row"><button type="button" id="evCancel">취소</button><button class="pri" type="submit">저장</button></div>
 </form></dialog>

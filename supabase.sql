@@ -161,11 +161,18 @@ begin
   end if;
 end $$;
 
-create or replace function cal_add_event(p_grp text, p_token text, p_date date, p_time text, p_text text, p_kind text)
+-- 일정 색 (#rrggbb, 비우면 사람 기본색)
+alter table cal_events add column if not exists color text;
+alter table cal_events drop constraint if exists cal_events_color_check;
+alter table cal_events add constraint cal_events_color_check check (color is null or color ~ '^#[0-9a-fA-F]{6}$');
+
+drop function if exists cal_add_event(text, text, date, text, text, text);
+create or replace function cal_add_event(p_grp text, p_token text, p_date date, p_time text, p_text text, p_kind text, p_color text default null)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare m text := cal_auth(p_grp, p_token);
 begin
-  insert into cal_events (grp, date, time, text, kind, owner) values (p_grp, p_date, nullif(p_time, ''), p_text, p_kind, m);
+  insert into cal_events (grp, date, time, text, kind, owner, color)
+  values (p_grp, p_date, nullif(p_time, ''), p_text, p_kind, m, case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end);
 end $$;
 
 create or replace function cal_update_event(p_grp text, p_token text, p_id uuid, p_done boolean)
@@ -204,7 +211,7 @@ grant execute on function cal_register(text, text, text, text, date, date, text)
 grant execute on function cal_login(text, text, text) to anon, authenticated;
 grant execute on function cal_logout(text, text) to anon, authenticated;
 grant execute on function cal_save_member(text, text, text, text, text, date, date, text) to anon, authenticated;
-grant execute on function cal_add_event(text, text, date, text, text, text) to anon, authenticated;
+grant execute on function cal_add_event(text, text, date, text, text, text, text) to anon, authenticated;
 grant execute on function cal_update_event(text, text, uuid, boolean) to anon, authenticated;
 grant execute on function cal_delete_event(text, text, uuid) to anon, authenticated;
 grant execute on function cal_set_stay(text, text, date, text) to anon, authenticated;

@@ -79,20 +79,20 @@ async function supabaseStore(url, key) {
     saveMember: m => after(rpc('cal_save_member', { p_token: token, p_name: m.name, p_org: m.org, p_room: m.room, p_st: m.st || null, p_en: m.en || null, p_new_pw: m.newPw || null })),
     watchWeek: (start, end, cb) => watch(async () => {
       const [events, stays, memos] = await Promise.all([
-        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done&order=created_at`),
+        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color&order=created_at`),
         sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
         sb(`cal_memos?${G}&week=eq.${start}&select=member,week,goal,memo`),
       ]);
       return { events, stays, memos };
     }, cb),
-    addEvent: e => after(rpc('cal_add_event', { p_token: token, p_date: e.date, p_time: e.time || null, p_text: e.text, p_kind: e.kind })),
+    addEvent: e => after(rpc('cal_add_event', { p_token: token, p_date: e.date, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null })),
     updateEvent: (id, p) => after(rpc('cal_update_event', { p_token: token, p_id: id, p_done: !!p.done })),
     deleteEvent: id => after(rpc('cal_delete_event', { p_token: token, p_id: id })),
     setStay: (member, date, stay) => after(rpc('cal_set_stay', { p_token: token, p_date: date, p_stay: stay })),
     setMemo: (member, week, data) => after(rpc('cal_set_memo', { p_token: token, p_week: week, p_goal: data.goal, p_memo: data.memo })),
     loadRange: async (start, end) => {
       const [events, stays] = await Promise.all([
-        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done&order=created_at`),
+        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color&order=created_at`),
         sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
       ]);
       return { events, stays };
@@ -162,6 +162,7 @@ let me = session?.id || null, filter = 'all', cur = monday(new Date()), unWeek =
 const colorOf = id => { const i = members.findIndex(m => m.id === id); return COLORS[(i < 0 ? 0 : i) % COLORS.length]; };
 const nameOf = id => members.find(m => m.id === id)?.name || '알 수 없음';
 const myInfo = () => members.find(m => m.id === me);
+const evColor = e => e.color || (e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner));
 
 function prog() {
   const m = myInfo();
@@ -201,7 +202,7 @@ function renderWeek() {
       <div class="num"><span>${d.getDate()}</span></div>
       ${me ? stayCtl(date, n, myStay) : ''}
       ${others.length ? `<div class="stays">${others.map(s => `<span style="border-color:${colorOf(s.member)}">${esc(nameOf(s.member))} ${esc(STAY_L[s.stay] || s.stay)}</span>`).join('')}</div>` : ''}
-      <ul>${evs.length ? evs.map(e => `<li class="${e.done ? 'done' : ''}" style="--c:${e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner)}">
+      <ul>${evs.length ? evs.map(e => `<li class="${e.done ? 'done' : ''}" style="--c:${evColor(e)}">
         ${e.owner === me ? `<input type="checkbox" data-chk="${esc(e.id)}" ${e.done ? 'checked' : ''} aria-label="완료">` : ''}
         <span class="m"><span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span>
         ${e.owner === me ? `<button class="x" data-del="${esc(e.id)}" aria-label="삭제">×</button>` : ''}</li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>
@@ -348,7 +349,7 @@ $('week').addEventListener('change', e => {
 });
 $('week').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.add) { target = b.dataset.add; const d = new Date(target); $('evT').textContent = `${d.getMonth() + 1}/${d.getDate()} 일정 추가`; $('evFrm').reset(); $('evDlg').showModal(); $('fText').focus(); }
+  if (b.dataset.add) { target = b.dataset.add; const d = new Date(target); $('evT').textContent = `${d.getMonth() + 1}/${d.getDate()} 일정 추가`; $('evFrm').reset(); renderSwatches(); $('evDlg').showModal(); $('fText').focus(); }
   if (b.dataset.del) run(store.deleteEvent(b.dataset.del));
 });
 function saveStay(date) {
@@ -363,9 +364,39 @@ function saveStay(date) {
 $('week').addEventListener('keydown', e => {
   if (e.target.dataset.stayin && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
+/* ---------- 일정 색 ---------- */
+const SWATCHES = ['#2f6fdf', '#1f9d6b', '#e8572a', '#d23c3c', '#d23c7a', '#9b4fd6', '#d6a21f', '#2aa6b8', '#7a4b2a', '#1f2723'];
+const COLOR_KEY = 'daechae-last-color';
+let pickColor = null;
+function renderSwatches() {
+  const last = lsGet(COLOR_KEY);
+  pickColor = /^#[0-9a-f]{6}$/i.test(last || '') ? last : null;
+  const mine = colorOf(me);
+  const custom = pickColor && !SWATCHES.includes(pickColor);
+  $('fColors').innerHTML =
+    `<button type="button" class="sw auto ${!pickColor ? 'on' : ''}" data-col="" style="--s:${mine}" aria-label="기본 (내 색)" title="기본 (내 색)"><span>기본</span></button>` +
+    SWATCHES.map(c => `<button type="button" class="sw ${pickColor === c ? 'on' : ''}" data-col="${c}" style="--s:${c}" aria-label="색 ${c}"></button>`).join('') +
+    `<label class="sw pick ${custom ? 'on' : ''}" style="--s:${custom ? pickColor : 'transparent'}" title="원하는 색 고르기"><input type="color" id="fColorPick" value="${pickColor || mine}" aria-label="원하는 색 직접 고르기"></label>`;
+  $('fColorNow').style.background = pickColor || mine;
+}
+$('fColors').addEventListener('click', e => {
+  const b = e.target.closest('[data-col]'); if (!b) return;
+  pickColor = b.dataset.col || null; lsSet(COLOR_KEY, pickColor || '');
+  $('fColors').querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b));
+  $('fColorNow').style.background = pickColor || colorOf(me);
+});
+$('fColors').addEventListener('input', e => {
+  if (e.target.id !== 'fColorPick') return;
+  pickColor = e.target.value;
+  $('fColors').querySelectorAll('.sw').forEach(x => x.classList.remove('on'));
+  const l = e.target.closest('.pick'); l.classList.add('on'); l.style.setProperty('--s', pickColor);
+  $('fColorNow').style.background = pickColor;
+});
+
 $('evFrm').addEventListener('submit', e => {
   e.preventDefault(); const text = $('fText').value.trim(); if (!text) return;
-  run(store.addEvent({ date: target, time: $('fTime').value, text, kind: $('fKind').value, owner: me, done: false }));
+  run(store.addEvent({ date: target, time: $('fTime').value, text, kind: $('fKind').value, owner: me, done: false, color: pickColor }));
+  if (pickColor) lsSet(COLOR_KEY, pickColor);
   $('evDlg').close();
 });
 $('evCancel').addEventListener('click', () => $('evDlg').close());
@@ -451,9 +482,9 @@ function renderMonth() {
     const out = d.getMonth() !== mCur.getMonth();
     const lines = [
       ...stays.map(x => `<i class="st" style="--c:${colorOf(x.member)}">${solo ? '' : esc(shortName(nameOf(x.member))) + ' '}${esc(STAY_L[x.stay] || x.stay)}</i>`),
-      ...events.map(e => `<i style="--c:${e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.text)}</i>`),
+      ...events.map(e => `<i style="--c:${evColor(e)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.text)}</i>`),
     ];
-    const dots = [...stays.map(x => colorOf(x.member)), ...events.map(e => e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner))];
+    const dots = [...stays.map(x => colorOf(x.member)), ...events.map(e => evColor(e))];
     html += `<button class="mc${out ? ' out' : ''}${date === today ? ' today' : ''}${date === mSel ? ' sel' : ''}" data-md="${date}" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일, 일정 ${events.length}개">
       <span class="mn"><span>${d.getDate()}</span></span>
       <span class="ml">${lines.slice(0, 3).join('')}${lines.length > 3 ? `<em>+${lines.length - 3}</em>` : ''}</span>
@@ -467,7 +498,7 @@ function renderMonthDay() {
   const d = new Date(mSel), { stays, events } = mItems(mSel);
   $('mDay').innerHTML = `<div class="mdh"><b>${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[(d.getDay() + 6) % 7]}요일</b><button id="mGo">이 주 보기 ›</button></div>
     ${stays.length ? `<div class="stays">${stays.map(x => `<span style="border-color:${colorOf(x.member)}">${esc(nameOf(x.member))} ${esc(STAY_L[x.stay] || x.stay)}</span>`).join('')}</div>` : ''}
-    <ul>${events.length ? events.map(e => `<li style="--c:${e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner)}"><span class="m"><span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span></li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>`;
+    <ul>${events.length ? events.map(e => `<li style="--c:${evColor(e)}"><span class="m"><span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span></li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>`;
 }
 function openMonth() {
   const t = addDays(cur, 3); mCur = new Date(t.getFullYear(), t.getMonth(), 1);
