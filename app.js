@@ -56,6 +56,7 @@ async function supabaseStore(url, key) {
   await sb(`cal_members?${G}&select=id&limit=1`); // 연결·테이블 확인
   return {
     mode: 'supabase',
+    refresh: refreshAll,
     watchMembers: cb => watch(() => sb(`cal_members?${G}&select=id,name,org,room,st,en`), cb),
     saveMember: m => after(upsert('cal_members', 'grp,id', { id: m.id, name: m.name, org: m.org || null,
       room: m.room || null, st: m.st || null, en: m.en || null, updated_at: new Date().toISOString() })),
@@ -74,6 +75,13 @@ async function supabaseStore(url, key) {
     deleteEvent: id => after(sb(`cal_events?id=eq.${encodeURIComponent(id)}&${G}`, { method: 'DELETE' })),
     setStay: (member, date, stay) => after(upsert('cal_stays', 'grp,member,date', { member, date, stay })),
     setMemo: (member, week, data) => after(upsert('cal_memos', 'grp,member,week', { member, week, goal: data.goal, memo: data.memo })),
+    loadRange: async (start, end) => {
+      const [events, stays] = await Promise.all([
+        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done&order=created_at`),
+        sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
+      ]);
+      return { events, stays };
+    },
   };
 }
 
@@ -102,6 +110,10 @@ function localStore() {
     deleteEvent: async id => { delete d.events[id]; put(); },
     setStay: async (member, date, stay) => { d.stays[`${member}_${date}`] = { member, date, stay }; put(); },
     setMemo: async (member, week, data) => { const k = `${member}_${week}`; d.memos[k] = { ...d.memos[k], member, week, ...data }; put(); },
+    loadRange: async (start, end) => ({
+      events: vals(d.events).filter(e => e.date >= start && e.date <= end),
+      stays: vals(d.stays).filter(x => x.date >= start && x.date <= end),
+    }),
   };
 }
 
@@ -269,6 +281,7 @@ function afterRender() {
   requestAnimationFrame(() => {
     if (mode === 'start') scrollToDay(0);
     else if (mode === 'end') { const d = dayEls()[6]; w.scrollTo({ left: d.offsetLeft + d.offsetWidth - w.clientWidth }); }
+    else if (typeof mode === 'object') scrollToDay(mode.day);
     else { const t = dayEls().findIndex(d => d.classList.contains('today')); scrollToDay(t < 0 ? 0 : Math.max(0, t)); }
     setTimeout(() => { pendingScroll = null; }, 400);
   });
@@ -286,6 +299,75 @@ $('invite').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}?g=${encodeURIComponent(group)}`;
   try { await navigator.clipboard.writeText(url); toast('초대 링크를 복사했어요'); } catch { prompt('이 링크를 공유하세요', url); }
 });
+
+/* ---------- 한 달 보기 ---------- */
+let mCur = new Date(new Date().getFullYear(), new Date().getMonth(), 1), mFilter = 'all', mSel = null, mData = { events: [], stays: [] }, mTimer = null;
+const shortName = n => (n && n.length > 2 ? n.slice(1) : n || '');
+const mPass = owner => mFilter === 'all' || (mFilter === 'me' ? owner === me : mFilter === 'others' ? owner !== me : owner === mFilter);
+function mRange() {
+  const start = monday(mCur), last = new Date(mCur.getFullYear(), mCur.getMonth() + 1, 0);
+  const rows = Math.ceil((Math.round((last - start) / 864e5) + 1) / 7);
+  return { start, rows, end: addDays(start, rows * 7 - 1) };
+}
+async function mLoad() {
+  const { start, end } = mRange();
+  try { mData = await store.loadRange(ymd(start), ymd(end)); renderMonth(); }
+  catch (e) { banner(e.message, true); }
+}
+function mItems(date) {
+  const stays = mData.stays.filter(x => x.date === date && x.stay !== 'in' && mPass(x.member));
+  const events = mData.events.filter(e => e.date === date && (e.kind === '공지' || mPass(e.owner)))
+    .sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+  return { stays, events };
+}
+function renderMonth() {
+  const { start, rows } = mRange(), today = ymd(new Date()), solo = mFilter === 'me' || (mFilter !== 'all' && mFilter !== 'others');
+  $('mTitle').innerHTML = `<span class="y">${mCur.getFullYear()}</span>${mCur.getMonth() + 1}월`;
+  const opts = [['all', '전체'], ['me', '나만'], ['others', '다른 사람 모두'], ...members.filter(m => m.id !== me).map(m => [m.id, m.name])];
+  $('mFil').innerHTML = opts.map(([v, l]) => `<button class="chip ${mFilter === v ? 'on' : ''}" data-mf="${esc(v)}">${v.length > 8 ? `<span class="dot" style="background:${colorOf(v)}"></span>` : ''}${esc(l)}</button>`).join('');
+  let html = EN.map((e, i) => `<div class="mw">${e}<small>${DAYS[i]}</small></div>`).join('');
+  for (let k = 0; k < rows * 7; k++) {
+    const d = addDays(start, k), date = ymd(d), { stays, events } = mItems(date);
+    const out = d.getMonth() !== mCur.getMonth();
+    const lines = [
+      ...stays.map(x => `<i class="st" style="--c:${colorOf(x.member)}">${solo ? '' : esc(shortName(nameOf(x.member))) + ' '}${esc(STAY_L[x.stay] || x.stay)}</i>`),
+      ...events.map(e => `<i style="--c:${e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.text)}</i>`),
+    ];
+    const dots = [...stays.map(x => colorOf(x.member)), ...events.map(e => e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner))];
+    html += `<button class="mc${out ? ' out' : ''}${date === today ? ' today' : ''}${date === mSel ? ' sel' : ''}" data-md="${date}" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일, 일정 ${events.length}개">
+      <span class="mn"><span>${d.getDate()}</span></span>
+      <span class="ml">${lines.slice(0, 3).join('')}${lines.length > 3 ? `<em>+${lines.length - 3}</em>` : ''}</span>
+      <span class="mdots">${dots.slice(0, 5).map(c => `<s style="background:${c}"></s>`).join('')}</span></button>`;
+  }
+  $('mGrid').innerHTML = html;
+  renderMonthDay();
+}
+function renderMonthDay() {
+  if (!mSel) { $('mDay').innerHTML = '<p class="mhint">날짜를 누르면 그날 일정을 자세히 볼 수 있어요.</p>'; return; }
+  const d = new Date(mSel), { stays, events } = mItems(mSel);
+  $('mDay').innerHTML = `<div class="mdh"><b>${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[(d.getDay() + 6) % 7]}요일</b><button id="mGo">이 주 보기 ›</button></div>
+    ${stays.length ? `<div class="stays">${stays.map(x => `<span style="border-color:${colorOf(x.member)}">${esc(nameOf(x.member))} ${esc(STAY_L[x.stay] || x.stay)}</span>`).join('')}</div>` : ''}
+    <ul>${events.length ? events.map(e => `<li style="--c:${e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner)}"><span class="m"><span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span></li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>`;
+}
+function openMonth() {
+  const t = addDays(cur, 3); mCur = new Date(t.getFullYear(), t.getMonth(), 1);
+  store.refresh?.(); renderMonth(); $('monDlg').showModal(); mLoad();
+  clearInterval(mTimer); mTimer = setInterval(() => { if ($('monDlg').open && !document.hidden) mLoad(); }, 10000);
+}
+$('monthBtn').addEventListener('click', openMonth);
+$('mClose').addEventListener('click', () => $('monDlg').close());
+$('monDlg').addEventListener('close', () => clearInterval(mTimer));
+$('monDlg').addEventListener('click', e => {
+  if (e.target === $('monDlg')) return $('monDlg').close();
+  const f = e.target.closest('[data-mf]'); if (f) { mFilter = f.dataset.mf; renderMonth(); return; }
+  const c = e.target.closest('[data-md]'); if (c) { mSel = mSel === c.dataset.md ? null : c.dataset.md; renderMonth(); if (mSel) $('mDay').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+  if (e.target.closest('#mGo')) {
+    const d = new Date(mSel); cur = monday(d); pendingScroll = { day: (d.getDay() + 6) % 7 };
+    $('monDlg').close(); watchWeek();
+  }
+});
+$('mPrev').addEventListener('click', () => { mCur = new Date(mCur.getFullYear(), mCur.getMonth() - 1, 1); mSel = null; renderMonth(); mLoad(); });
+$('mNext').addEventListener('click', () => { mCur = new Date(mCur.getFullYear(), mCur.getMonth() + 1, 1); mSel = null; renderMonth(); mLoad(); });
 
 /* ---------- 스프링 ---------- */
 function drawRings() {
