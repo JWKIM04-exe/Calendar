@@ -181,6 +181,13 @@ dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{backg
 .qi .qg{font-size:12px;color:var(--sub);white-space:nowrap}
 .qi.bad{border-left-color:#c03030;color:#c03030}
 .qhelp{margin:8px 0 0;font-size:12.5px;color:var(--sub)}
+.todaybtn{display:flex;align-items:center;gap:14px;width:min(100%,420px);margin:18px auto 0;min-height:64px;padding:10px 22px;border:1px solid #e3ddcf;border-radius:14px;background:#fff;color:#1f2723;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+.todaybtn:hover{background:#fbfaf6}
+.todaybtn .tl{font-family:"Noto Serif KR",serif;font-weight:700;font-size:15px}
+.todaybtn .tn{font-family:"Bodoni Moda",serif;font-weight:600;font-size:34px;line-height:1;margin-left:auto}
+.todaybtn .tm{font-size:14px;color:#6c716d}
+.todaybtn .ta{font-size:20px;margin-left:auto;color:#6c716d}
+.todaybtn.here{opacity:.75}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;opacity:0}
 .fhint{margin:0;font-size:13px;color:var(--psub)}.fhint:empty,.ferr:empty{display:none}
 .ferr{margin:0;font-size:14px;color:#a02020;font-weight:500}
@@ -240,6 +247,9 @@ textarea:disabled{opacity:.6}
     <div class="paper" id="paper"><div class="week" id="week"></div></div>
     <div class="stand" aria-hidden="true"></div>
   </div>
+  <button type="button" class="todaybtn" id="todayBtn" aria-label="오늘 날짜로 이동">
+    <span class="tl">오늘로</span><span class="tn" id="tdNum">23</span><span class="tm" id="tdTxt">11월 · 월요일</span><span class="ta" aria-hidden="true">↺</span>
+  </button>
   <p class="hint">옆으로 밀면 날짜가 계속 이어져요</p>
   <div class="memo">
     <div><label for="goal">내 이번 주 목표</label><textarea id="goal" placeholder="예: 자격증 공부 하루 1시간"></textarea></div>
@@ -294,6 +304,6 @@ textarea:disabled{opacity:.6}
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=2611230737"></script>
+<script type="module" src="app.js?v=2611230738"></script>
 </body>
 </html>

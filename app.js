@@ -1,5 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230737';
-import { parseQuick } from './quick.js?v=2611230737';
+import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230738';
+import { parseQuick } from './quick.js?v=2611230738';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -527,6 +527,8 @@ function scrollToDate(ds, smooth) {
 // 보고 있는 주에 맞춰 제목·메모 바꾸기
 function onScroll() {
   const el = firstVisible(); if (!el) return;
+  const els = dayEls(), i = els.indexOf(el), vis = visibleCount(), td = ymd(new Date());
+  $('todayBtn').classList.toggle('here', els.slice(i, i + vis).some(x => x.dataset.date === td));
   const m = monday(new Date(el.dataset.date));
   if (ymd(m) !== ymd(cur)) { cur = m; renderWeekInfo(); }
 }
@@ -560,6 +562,13 @@ addEventListener('keydown', e => {
 $('prev').addEventListener('click', () => scrollToDate(ymd(addDays(cur, -7)), true));
 $('next').addEventListener('click', () => scrollToDate(ymd(addDays(cur, 7)), true));
 $('now').addEventListener('click', () => scrollToDate(ymd(new Date()), true));
+// 달력 아래 하얀 '오늘로' 칸
+function todayBtn() {
+  const t = new Date(); $('tdNum').textContent = t.getDate();
+  $('tdTxt').textContent = `${t.getMonth() + 1}월 · ${DAYS[(t.getDay() + 6) % 7]}요일`;
+}
+todayBtn(); setInterval(todayBtn, 60000);
+$('todayBtn').addEventListener('click', () => scrollToDate(ymd(new Date()), true));
 $('invite').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}?g=${encodeURIComponent(group)}`;
   try { await navigator.clipboard.writeText(url); toast('초대 링크를 복사했어요'); } catch { prompt('이 링크를 공유하세요', url); }
