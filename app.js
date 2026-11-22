@@ -1,4 +1,4 @@
-import { firebaseConfig, DEFAULT_GROUP } from './config.js';
+import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,37 +19,60 @@ const ME_KEY = `daechae-me-${group}`;
 function banner(msg, err) { const b = $('banner'); b.textContent = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = !msg; }
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1800); }
 
-/* ---------- 저장소: Firebase ---------- */
-async function firebaseStore(cfg) {
-  const V = '10.12.2', base = `https://www.gstatic.com/firebasejs/${V}`;
-  const { initializeApp } = await import(`${base}/firebase-app.js`);
-  const fs = await import(`${base}/firebase-firestore.js`);
-  const au = await import(`${base}/firebase-auth.js`);
-  const app = initializeApp(cfg);
-  await au.signInAnonymously(au.getAuth(app));
-  const db = fs.getFirestore(app);
-  const col = n => fs.collection(db, 'groups', group, n);
-  const list = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
+/* ---------- 저장소: Supabase ---------- */
+async function supabaseStore(url, key) {
+  const sb = async (path, opts = {}) => {
+    const res = await fetch(url + '/rest/v1/' + path, { ...opts,
+      headers: { apikey: key, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+    if (!res.ok) {
+      const t = (await res.text()).slice(0, 160);
+      throw new Error(res.status === 404 || /cal_/.test(t) && /exist|schema cache/.test(t)
+        ? '캘린더 테이블이 없어요. supabase.sql을 SQL Editor에서 실행해 주세요.' : `서버 오류 (${res.status}) ${t}`);
+    }
+    const t = await res.text(); return t ? JSON.parse(t) : null;
+  };
+  const G = 'grp=eq.' + encodeURIComponent(group);
+  const upsert = (table, conflict, row) => sb(`${table}?on_conflict=${conflict}`, { method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ grp: group, ...row }) });
+  // 주기적으로 새로고침 (10초) + 창으로 돌아올 때 + 내가 저장한 직후
+  const watchers = new Set();
+  const refreshAll = () => watchers.forEach(f => f());
+  setInterval(() => { if (!document.hidden) refreshAll(); }, 10000);
+  addEventListener('focus', refreshAll);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(); });
+  const watch = (load, cb) => {
+    let alive = true, busy = false;
+    const f = async () => {
+      if (busy || !alive) return; busy = true;
+      try { const v = await load(); if (alive) { cb(v); banner(''); } }
+      catch (e) { banner(e.message, true); }
+      busy = false;
+    };
+    watchers.add(f); f();
+    return () => { alive = false; watchers.delete(f); };
+  };
+  const after = p => p.then(r => { refreshAll(); return r; });
+  await sb(`cal_members?${G}&select=id&limit=1`); // 연결·테이블 확인
   return {
-    mode: 'firebase',
-    watchMembers: cb => fs.onSnapshot(col('members'), s => cb(list(s)), e => banner('멤버 불러오기 실패: ' + e.message, true)),
-    saveMember: m => fs.setDoc(fs.doc(col('members'), m.id), m, { merge: true }),
-    watchWeek(start, end, cb) {
-      const st = { events: [], stays: [], memos: [] };
-      const fail = e => banner('일정 불러오기 실패: ' + e.message, true);
-      const range = n => fs.query(col(n), fs.where('date', '>=', start), fs.where('date', '<=', end));
-      const u = [
-        fs.onSnapshot(range('events'), s => { st.events = list(s); cb(st); }, fail),
-        fs.onSnapshot(range('stays'), s => { st.stays = list(s); cb(st); }, fail),
-        fs.onSnapshot(fs.query(col('memos'), fs.where('week', '==', start)), s => { st.memos = list(s); cb(st); }, fail),
-      ];
-      return () => u.forEach(f => f());
-    },
-    addEvent: e => fs.addDoc(col('events'), { ...e, createdAt: fs.serverTimestamp() }),
-    updateEvent: (id, p) => fs.updateDoc(fs.doc(col('events'), id), p),
-    deleteEvent: id => fs.deleteDoc(fs.doc(col('events'), id)),
-    setStay: (member, date, stay) => fs.setDoc(fs.doc(col('stays'), `${member}_${date}`), { member, date, stay }),
-    setMemo: (member, week, data) => fs.setDoc(fs.doc(col('memos'), `${member}_${week}`), { member, week, ...data }, { merge: true }),
+    mode: 'supabase',
+    watchMembers: cb => watch(() => sb(`cal_members?${G}&select=id,name,org,room,st,en`), cb),
+    saveMember: m => after(upsert('cal_members', 'grp,id', { id: m.id, name: m.name, org: m.org || null,
+      room: m.room || null, st: m.st || null, en: m.en || null, updated_at: new Date().toISOString() })),
+    watchWeek: (start, end, cb) => watch(async () => {
+      const [events, stays, memos] = await Promise.all([
+        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done&order=created_at`),
+        sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
+        sb(`cal_memos?${G}&week=eq.${start}&select=member,week,goal,memo`),
+      ]);
+      return { events, stays, memos };
+    }, cb),
+    addEvent: e => after(sb('cal_events', { method: 'POST', headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ grp: group, date: e.date, time: e.time || null, text: e.text, kind: e.kind, owner: e.owner, done: false }) })),
+    updateEvent: (id, p) => after(sb(`cal_events?id=eq.${encodeURIComponent(id)}&${G}`, { method: 'PATCH',
+      headers: { Prefer: 'return=minimal' }, body: JSON.stringify(p) })),
+    deleteEvent: id => after(sb(`cal_events?id=eq.${encodeURIComponent(id)}&${G}`, { method: 'DELETE' })),
+    setStay: (member, date, stay) => after(upsert('cal_stays', 'grp,member,date', { member, date, stay })),
+    setMemo: (member, week, data) => after(upsert('cal_memos', 'grp,member,week', { member, week, goal: data.goal, memo: data.memo })),
   };
 }
 
@@ -136,7 +159,13 @@ function render() { prog(); renderMembers(); renderWeek(); }
 
 function watchWeek() {
   if (unWeek) unWeek();
-  unWeek = store.watchWeek(ymd(cur), ymd(addDays(cur, 6)), w => { week = { ...w }; renderWeek(); });
+  unWeek = store.watchWeek(ymd(cur), ymd(addDays(cur, 6)), w => {
+    week = { ...w };
+    // 드롭다운을 열어 둔 채로 새로고침되면 닫혀 버리니, 고르는 중이면 다음 갱신 때 그림
+    const a = document.activeElement;
+    if (a && a.tagName === 'SELECT' && $('week').contains(a)) return;
+    renderWeek();
+  });
   renderWeek();
 }
 
@@ -205,12 +234,12 @@ $('invite').addEventListener('click', async () => {
 
 /* ---------- 시작 ---------- */
 $('grp').textContent = `그룹: ${group}`;
-const configured = firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('YOUR');
+const configured = !!(SUPABASE_URL && SUPABASE_KEY);
 try {
-  store = configured ? await firebaseStore(firebaseConfig) : localStore();
-  if (!configured) banner('로컬 모드: config.js에 Firebase 설정을 넣기 전까지는 이 브라우저에만 저장되고 다른 사람과 공유되지 않아요.');
+  store = configured ? await supabaseStore(SUPABASE_URL, SUPABASE_KEY) : localStore();
+  if (!configured) banner('로컬 모드: config.js에 Supabase 설정을 넣기 전까지는 이 브라우저에만 저장되고 다른 사람과 공유되지 않아요.');
 } catch (err) {
-  banner('Firebase 연결 실패 (' + err.message + ') — 로컬 모드로 실행합니다.', true);
+  banner('서버 연결 실패: ' + err.message + ' (지금은 로컬 모드로 실행 중)', true);
   store = localStore();
 }
 let first = true;

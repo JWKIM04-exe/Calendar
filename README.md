@@ -9,26 +9,19 @@
 - 주마다 목표와 메모를 적고, 다른 사람의 목표도 볼 수 있습니다
 - **그룹 코드**(`?g=코드`)로 여러 팀이 같은 사이트를 따로따로 쓸 수 있습니다
 
-기술: HTML, 순수 JavaScript, Firebase(Firestore와 익명 로그인). 빌드 과정이 없습니다.
+기술: HTML, 순수 JavaScript, Supabase. 빌드 과정이 없습니다. 헬스기록 앱과 같은 Supabase 프로젝트를 씁니다.
 
-## 1. GitHub Pages로 사이트 열기
+사이트 주소: https://jwkim04-exe.github.io/Calendar/
 
-1. 저장소의 **Settings → Pages**로 갑니다
-2. Source에서 **Deploy from a branch**를 고르고, 브랜치는 `main`, 폴더는 `/ (root)`로 정한 뒤 Save를 누릅니다
-3. 1~2분 뒤 `https://<아이디>.github.io/<저장소이름>/` 주소로 접속합니다
+## 처음 한 번만: Supabase 테이블 만들기
 
-Firebase를 설정하기 전에는 **로컬 모드**로 동작합니다. 로컬 모드에서는 내 브라우저에만 저장되고 공유되지 않습니다.
+1. https://supabase.com/dashboard 에서 헬스기록 프로젝트를 엽니다
+2. 왼쪽 메뉴에서 **SQL Editor**를 누르고 **New query**를 엽니다
+3. 이 저장소의 `supabase.sql` 내용을 전부 붙여넣고 **Run**을 누릅니다
 
-## 2. Firebase 연결하기 (공유 기능, 무료)
+테이블 이름이 `cal_`로 시작해서 헬스기록의 테이블과 섞이지 않습니다. 테이블이 없거나 연결에 실패하면 사이트 위쪽에 안내가 뜨고, 그동안은 로컬 모드(이 브라우저에만 저장)로 동작합니다.
 
-1. https://console.firebase.google.com 에서 **프로젝트 추가**를 누릅니다
-2. **빌드 → Firestore Database → 데이터베이스 만들기**를 누르고, 위치는 `asia-northeast3 (서울)`을 고른 뒤 프로덕션 모드로 만듭니다
-3. **빌드 → Authentication → 시작하기 → 로그인 방법**에서 **익명**을 사용 설정합니다
-4. **Firestore → 규칙** 탭에 이 저장소의 `firestore.rules` 내용을 붙여넣고 게시합니다
-5. **Authentication → 설정 → 승인된 도메인**에 `<아이디>.github.io`를 추가합니다
-6. **프로젝트 설정(톱니바퀴) → 내 앱 → 웹 앱(</>) 추가**를 누르고, 화면에 나온 `firebaseConfig` 값을 `config.js`에 붙여넣은 뒤 커밋합니다
-
-> Firebase 웹 설정값(apiKey 등)은 원래 공개되는 값이라 저장소에 올려도 괜찮습니다. 데이터 보호는 보안 규칙이 맡습니다.
+다른 사람이 올린 일정은 10초마다, 그리고 창으로 돌아올 때 자동으로 새로고침됩니다.
 
 ## 3. 함께 쓰기
 
@@ -41,17 +34,17 @@ Firebase를 설정하기 전에는 **로컬 모드**로 동작합니다. 로컬 
 | 파일 | 설명 |
 |---|---|
 | `index.html` | 화면과 스타일 |
-| `app.js` | 동작 (Firebase와 로컬 저장소) |
-| `config.js` | Firebase 설정과 기본 그룹 코드 |
-| `firestore.rules` | Firestore 보안 규칙 |
+| `app.js` | 동작 (Supabase와 로컬 저장소) |
+| `config.js` | Supabase 주소, 공개 키, 기본 그룹 코드 |
+| `supabase.sql` | 테이블과 보안 규칙 (SQL Editor에서 한 번 실행) |
 
-## 데이터 구조
+## 데이터 구조 (Supabase 테이블)
 
 ```
-groups/{그룹코드}/members/{id}         이름, 기관, 생활관, 복무 시작일과 종료일
-groups/{그룹코드}/events/{id}          날짜, 시간, 내용, 분류, 작성자, 완료 여부
-groups/{그룹코드}/stays/{멤버_날짜}     날짜별 거주 형태
-groups/{그룹코드}/memos/{멤버_주시작일}  주간 목표와 메모
+cal_members  그룹, id, 이름, 기관, 생활관, 복무 시작일과 종료일
+cal_events   그룹, 날짜, 시간, 내용, 분류, 작성자, 완료 여부
+cal_stays    그룹, 멤버, 날짜, 거주 형태
+cal_memos    그룹, 멤버, 주 시작일, 목표, 메모
 ```
 
 ## 앞으로 붙일 만한 기능
