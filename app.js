@@ -6,6 +6,7 @@ const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')
 const monday = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
+const EN = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const STAY = [['in', '시설 합숙'], ['out', '외출'], ['over', '외박'], ['leave', '휴가'], ['home', '출퇴근']];
 const STAY_L = Object.fromEntries(STAY);
 const COLORS = ['#2f6fdf', '#e8572a', '#1f9d6b', '#9b4fd6', '#d6a21f', '#d23c7a', '#2aa6b8', '#6b7a1f', '#7a4b2a', '#4a5568'];
@@ -131,7 +132,7 @@ function renderMembers() {
 function stayCtl(date, n, myStay) {
   // 기본값(시설 합숙)은 빈칸으로 두고 안내 문구만 보여줌
   const v = myStay === 'in' ? '' : (STAY_L[myStay] || myStay);
-  return `<input class="stayIn" data-stayin="${date}" maxlength="30" value="${esc(v)}" placeholder="어디서 지내요? (비우면 시설 합숙)" aria-label="${n}요일 내 거주 형태" enterkeyhint="done">`;
+  return `<input class="stayIn" data-stayin="${date}" maxlength="30" value="${esc(v)}" placeholder="시설 합숙" aria-label="${n}요일 내 거주 형태" enterkeyhint="done">`;
 }
 
 function renderWeek() {
@@ -144,7 +145,8 @@ function renderWeek() {
     const others = week.stays.filter(s => s.date === date && s.member !== me && s.stay !== 'in' && (filter === 'all' || s.member === filter));
     const evs = week.events.filter(e => e.date === date && show(e)).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
     return `<section class="day ${date === today ? 'today' : ''} ${i === 5 ? 'sat' : i === 6 ? 'sun' : ''}">
-      <div class="dh"><b>${n}</b><span>${d.getMonth() + 1}/${d.getDate()}</span></div>
+      <div class="dh"><span class="en">${EN[i]}</span><span class="ko">${n}</span>${i === 6 ? `<span class="yr">${d.getFullYear()}</span>` : d.getDate() === 1 || i === 0 ? `<span class="mo">${d.getMonth() + 1}월</span>` : ''}</div>
+      <div class="num"><span>${d.getDate()}</span></div>
       ${me ? stayCtl(date, n, myStay) : ''}
       ${others.length ? `<div class="stays">${others.map(s => `<span style="border-color:${colorOf(s.member)}">${esc(nameOf(s.member))} ${esc(STAY_L[s.stay] || s.stay)}</span>`).join('')}</div>` : ''}
       <ul>${evs.length ? evs.map(e => `<li class="${e.done ? 'done' : ''}" style="--c:${e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner)}">
@@ -249,6 +251,14 @@ $('invite').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}?g=${encodeURIComponent(group)}`;
   try { await navigator.clipboard.writeText(url); toast('초대 링크를 복사했어요'); } catch { prompt('이 링크를 공유하세요', url); }
 });
+
+/* ---------- 스프링 ---------- */
+function drawRings() {
+  const w = $('paper').clientWidth, n = Math.max(8, Math.round(w / 26));
+  $('rings').innerHTML = '<i></i>'.repeat(n);
+  $('paper').style.setProperty('--n', n);
+}
+const ringObs = new ResizeObserver(drawRings); ringObs.observe($('paper'));
 
 /* ---------- 시작 ---------- */
 $('grp').textContent = `그룹: ${group}`;

@@ -4,92 +4,144 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>대체복무 공유 캘린더</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0f1420);--ink:light-dark(#151a26,#e8ecf4);--sub:light-dark(#5b6478,#9aa4ba);
---band:light-dark(#22407a,#16294d);--line:light-dark(#dfe3ea,#283146);--card:light-dark(#f6f7fa,#161d2c);--acc:#e8572a}
+/* VOICE: 조용하고 단정한 문구류 — 책상 위 탁상 달력
+   IDEA: 스프링으로 묶인 크림색 종이 한 장이 검정 받침대 위에 서 있는 주간 달력
+   PICTURE: 7칸 종이 달력 자체(스프링·큰 세리프 숫자·가는 세로줄·받침대)
+   COLOUR and TYPE: 회색 책상, 크림 종이 #f4efe1, 먹색 #1f2723 / Bodoni Moda 숫자 + Noto Serif KR 제목 + Noto Sans KR 본문
+   LAYOUT: 위 이름·D-day → 사람 칩·주 이동 → 달력(넓으면 가로 7칸, 좁으면 세로 줄) → 메모 */
+:root{color-scheme:light dark;
+--desk:light-dark(#e6e7e6,#151817);--ink:light-dark(#1f2723,#ece7da);--sub:light-dark(#6c716d,#a7a99f);
+--paper:#f4efe1;--pink:#1f2723;--psub:#7a7a70;--rule:#cfc6b0;--stand:#1d2420;--ring:#2b2b2b;--card:light-dark(#f7f6f2,#1f2421);--line:light-dark(#d4d3ce,#333a36)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans KR",system-ui,sans-serif;overflow-x:clip}
-.band{padding:clamp(18px,3vw,36px) max(5vw,16px)}
-.wrap{max-width:1240px;margin:0 auto}
-header{background:var(--band);color:#fff}
-.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
-h1{font-size:clamp(24px,4vw,38px);line-height:1.1;margin:0;text-wrap:balance}
-.grp{font-size:14px;opacity:.85}
-.me{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;font-size:15px}
-.bar{flex:1 1 220px;height:10px;background:#ffffff30;border-radius:99px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--acc);width:0}
-.big{font-size:24px;font-weight:700;white-space:nowrap}
-header button{background:#ffffff1a;border-color:#ffffff40;color:#fff}
-.banner{background:#fff3cd;color:#5c4400;padding:10px max(5vw,16px);font-size:14px}
+body{margin:0;background:var(--desk);color:var(--ink);font:16px/1.55 "Noto Sans KR",system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding:0 max(4vw,14px)}
+.serif{font-family:"Noto Serif KR",serif}
+.banner{background:#fff3cd;color:#5c4400;padding:10px max(4vw,14px);font-size:14px}
 .banner.err{background:#fde2e2;color:#7a1010}
-.members{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:0 12px;min-height:40px;background:var(--card);color:var(--ink);font-size:14px}
-.chip.on{border-color:var(--ink);font-weight:600}
-.dot{width:10px;height:10px;border-radius:50%;flex:none}
-.nav{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
-.nav h2{font-size:21px;margin:0 auto 0 0}
-button{font:inherit;font-size:15px;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
-button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
-.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
-.day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:280px}
-.day.today{box-shadow:0 0 0 2px var(--acc) inset;border-color:var(--acc)}
-.dh{display:flex;justify-content:space-between;align-items:baseline}
-.dh b{font-size:17px}.dh span{font-size:13px;color:var(--sub)}
-.day.sat .dh b{color:#3b6fd4}.day.sun .dh b{color:#d23c3c}
-select,input,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
-.stayIn{width:100%;min-height:42px;padding:0 10px}.stayIn::placeholder{color:var(--sub)}
+
+/* 머리 */
+header{padding:clamp(20px,3vw,36px) 0 8px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+h1{font-family:"Noto Serif KR",serif;font-weight:700;font-size:clamp(26px,3.6vw,38px);line-height:1.1;margin:0;letter-spacing:-.01em}
+.grp{font-size:13px;color:var(--sub);margin-top:4px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.me{margin-top:16px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:14px;color:var(--sub)}
+.big{font-family:"Bodoni Moda",serif;font-weight:600;font-size:34px;line-height:1;color:var(--ink);white-space:nowrap}
+.bar{flex:1 1 200px;height:3px;background:var(--line);position:relative}
+.bar i{position:absolute;left:0;top:-1px;height:5px;background:var(--ink);width:0}
+
+button{font:inherit;font-size:15px;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+button:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button.pri{background:var(--ink);color:var(--desk)}
+
+/* 사람·주 이동 */
+.members{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+.chip{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 14px;font-size:14px;border-color:var(--line)}
+.chip.on{border-color:var(--ink);font-weight:700}
+.chip small{color:var(--sub);font-family:"Bodoni Moda",serif}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 20px}
+.nav h2{font-family:"Noto Serif KR",serif;font-size:20px;margin:0 auto 0 0}
+.nav button{min-height:40px;font-size:14px}
+
+/* 달력 */
+.cal{position:relative;padding-top:18px;filter:drop-shadow(0 18px 22px rgba(0,0,0,.12))}
+.rings{position:absolute;left:0;right:0;top:0;height:34px;display:flex;justify-content:space-around;overflow:hidden;z-index:2;pointer-events:none}
+.rings i{flex:none;width:7px;height:30px;border:2.5px solid var(--ring);border-radius:5px;background:linear-gradient(90deg,#555,#111 60%);box-shadow:1px 1px 0 rgba(0,0,0,.2)}
+.paper{position:relative;background:var(--paper);color:var(--pink);border-radius:3px 3px 0 0;padding-top:30px;
+ background-image:radial-gradient(circle at 50% 12px,var(--desk) 3.5px,transparent 4px);background-size:calc(100%/var(--n,40)) 100%;background-repeat:repeat-x}
+.paper::before{content:"";position:absolute;left:0;right:0;top:26px;border-top:1px solid var(--rule)}
+.stand{height:26px;background:linear-gradient(var(--stand),#0f1411);border-radius:0 0 4px 4px}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.day{padding:10px 12px 14px;border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:8px;min-height:360px}
+.day:first-child{border-left:0}
+.dh{display:flex;align-items:baseline;gap:6px;min-height:20px}
+.dh .en{font-family:"Bodoni Moda",serif;font-size:13px;letter-spacing:.08em}
+.dh .ko{font-size:12px;color:var(--psub)}
+.dh .yr,.dh .mo{margin-left:auto;font-family:"Bodoni Moda",serif;font-weight:600;font-size:13px;border:1.5px solid var(--pink);border-radius:50%;padding:0 8px;line-height:1.5}
+.dh .mo{font-family:"Noto Serif KR",serif;font-size:12px}
+.num{font-family:"Bodoni Moda",serif;font-weight:600;font-size:clamp(44px,5.4vw,72px);line-height:1;margin:2px 0 4px}
+.num span{display:inline-block;padding:2px 10px;margin-left:-10px;border-radius:50%;border:2px solid transparent}
+.day.today .num span{border-color:var(--pink)}
+.stayIn{width:100%;min-height:38px;padding:0 2px;font:inherit;font-size:15px;color:var(--pink);background:transparent;border:0;border-bottom:1px dashed var(--rule);border-radius:0}
+.stayIn::placeholder{color:#a29c8a;font-size:13px}
 .stays{display:flex;flex-wrap:wrap;gap:4px;font-size:12px}
-.stays span{border-radius:6px;padding:1px 6px;background:var(--bg);border:1px solid var(--line);white-space:nowrap}
+.stays span{padding:1px 8px;border:1px solid;border-radius:999px;white-space:nowrap;color:var(--pink)}
 ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;flex:1}
-li{border-radius:8px;padding:6px 8px;font-size:14px;display:flex;gap:6px;align-items:flex-start;background:var(--bg);border-left:4px solid var(--c,#999)}
-li .who{font-size:12px;color:var(--sub);display:block}
-li .t{font-weight:600;white-space:nowrap}
-li .x{margin-left:auto;border:0;background:none;min-height:24px;padding:0 4px;color:var(--sub);font-size:16px}
-li.done .m{text-decoration:line-through;opacity:.6}
-.empty{font-size:13px;color:var(--sub);border:0;background:none;padding:0}
-.add{width:100%;min-height:40px;font-size:14px}
-.memo{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:20px}
-.memo label{font-weight:600;display:block;margin-bottom:6px}
-textarea{width:100%;min-height:110px;padding:10px;resize:vertical}
-.others{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.others div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;white-space:pre-wrap}
-.others b{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--ink);width:min(440px,92vw);padding:20px}
-dialog::backdrop{background:#0008}
-dialog h3{margin:0 0 12px;font-size:20px}
-.f{display:grid;gap:10px}.f label{font-size:13px;color:var(--sub)}
-.f input,.f select{width:100%;min-height:44px;padding:0 10px}
-.row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
-.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+li{font-size:14px;display:flex;gap:6px;align-items:flex-start;padding:4px 0 6px;border-bottom:1px solid #e3dccb}
+li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;margin-top:7px;background:var(--c,#999)}
+li:has(input)::before{display:none}
+li input[type=checkbox]{accent-color:var(--c);margin-top:4px}
+li .who{font-size:11px;color:var(--psub);display:block}
+li .t{font-family:"Bodoni Moda",serif;font-weight:600;white-space:nowrap}
+li .x{margin-left:auto;border:0;min-height:24px;padding:0 4px;color:var(--psub);font-size:16px;background:none;border-radius:4px}
+li.done .m{text-decoration:line-through;opacity:.55}
+li.empty{color:#a29c8a;font-size:13px;border:0}li.empty::before{display:none}
+.add{min-height:36px;font-size:13px;border-color:var(--rule);color:var(--pink);background:transparent;border-style:dashed;border-radius:6px}
+.add:hover{background:#00000008}
+
+/* 메모 */
+.memo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px;margin-top:34px}
+.memo label{font-family:"Noto Serif KR",serif;font-weight:700;display:block;margin-bottom:6px}
+textarea{width:100%;min-height:110px;padding:12px;font:inherit;font-size:16px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:4px;resize:vertical}
+.others{margin:16px 0 40px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:10px}
+.others div{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:12px;font-size:14px;white-space:pre-wrap}
+.others b{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-family:"Noto Serif KR",serif}
+
+/* 대화상자 */
+dialog{border:0;border-radius:4px;background:var(--paper);color:var(--pink);width:min(440px,92vw);padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+dialog::backdrop{background:#0007}
+dialog h3{margin:0 0 14px;font-family:"Noto Serif KR",serif;font-size:21px}
+dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{background:var(--pink);color:var(--paper)}
+.f{display:grid;gap:10px}.f label{font-size:13px;color:var(--psub)}
+.f input,.f select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-size:16px;color:var(--pink);background:#fffdf6;border:1px solid var(--rule);border-radius:4px}
+.row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--stand);color:var(--paper);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
-@media(max-width:900px){.week{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
-@media(max-width:600px){.week{grid-template-columns:1fr}.day{min-height:0}}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
+
+@media(max-width:600px){.nav h2{flex-basis:100%}.acts button{min-height:40px;font-size:14px}}
+/* 좁은 화면: 날짜를 세로로 쌓고 숫자는 왼쪽 */
+@media(max-width:900px){
+ .week{grid-template-columns:1fr}
+ .day{border-left:0;border-top:1px solid var(--rule);min-height:0;display:grid;grid-template-columns:76px minmax(0,1fr);column-gap:14px;row-gap:6px;padding:14px 16px}
+ .day:first-child{border-top:0}
+ .day>.dh{grid-column:1;grid-row:1;flex-direction:column;align-items:flex-start;gap:0}
+ .day>.dh .yr,.day>.dh .mo{margin:4px 0 0}
+ .day>.num{grid-column:1;grid-row:2 / span 4;font-size:52px}
+ .day>:not(.dh):not(.num){grid-column:2}
+ .day>.stayIn{grid-row:1}
+}
 </style>
 </head>
 <body>
 <div id="banner" class="banner" hidden></div>
-<header class="band"><div class="wrap">
+<header><div class="wrap">
   <div class="top">
     <div><h1>대체복무 공유 캘린더</h1><div class="grp" id="grp"></div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button id="invite">초대 링크 복사</button>
-      <button id="editMe">내 정보</button>
-    </div>
+    <div class="acts"><button id="invite">초대 링크 복사</button><button id="editMe">내 정보</button></div>
   </div>
   <div class="me"><span class="big" id="dday">D-?</span><div class="bar"><i id="pbar"></i></div><span id="ptxt">불러오는 중…</span></div>
 </div></header>
 
-<main class="band"><div class="wrap">
+<main><div class="wrap">
   <div class="members" id="members"></div>
   <div class="nav">
     <h2 id="wk">주간</h2>
-    <button id="prev">◀ 이전 주</button>
+    <button id="prev" aria-label="이전 주">‹ 이전 주</button>
     <button id="now">이번 주</button>
-    <button id="next">다음 주 ▶</button>
+    <button id="next" aria-label="다음 주">다음 주 ›</button>
   </div>
-  <div class="week" id="week"></div>
+  <div class="cal">
+    <div class="rings" id="rings" aria-hidden="true"></div>
+    <div class="paper" id="paper"><div class="week" id="week"></div></div>
+    <div class="stand" aria-hidden="true"></div>
+  </div>
   <div class="memo">
     <div><label for="goal">내 이번 주 목표</label><textarea id="goal" placeholder="예: 자격증 공부 하루 1시간"></textarea></div>
     <div><label for="memo">내 메모 / 회고</label><textarea id="memo" placeholder="이번 주에 있었던 일, 다음 주에 챙길 것"></textarea></div>
