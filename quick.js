@@ -40,8 +40,13 @@ export function parseOne(src, now = new Date()) {
   let date = null, time = '', color = null, guessedDate = false;
   const cut = re => { const m = s.match(re); if (m) s = s.replace(m[0], ' '); return m; };
 
+  // 나만 보기: '나만보기', '나만', '비공개' 단어가 있으면
+  let priv = false;
+  let words = src.trim().split(/\s+/);
+  const pw = words.filter(w => /^(나만보기|나만|비공개)$/.test(w));
+  if (pw.length && pw.length < words.length) { priv = true; words = words.filter(w => !pw.includes(w)); src = words.join(' '); s = ' ' + src + ' '; }
+
   // 색: 맨 끝 단어
-  const words = src.trim().split(/\s+/);
   if (words.length > 1) {
     const c = colorOf(words[words.length - 1]);
     if (c) { color = c; s = ' ' + words.slice(0, -1).join(' ') + ' '; }
@@ -87,7 +92,7 @@ export function parseOne(src, now = new Date()) {
 
   const text = s.replace(/\s+/g, ' ').replace(/^\s*(에|에는)\s+/, '').trim();
   if (!date) { date = today; guessedDate = true; }
-  const out = { src: src.trim(), date: ymdOf(date), time, text, color, kind: kindOf(text), guessedDate };
+  const out = { src: src.trim(), date: ymdOf(date), time, text, color, kind: kindOf(text), guessedDate, private: priv };
   if (!text) out.error = '내용이 없어요';
   return out;
 }

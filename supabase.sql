@@ -166,21 +166,37 @@ alter table cal_events add column if not exists color text;
 alter table cal_events drop constraint if exists cal_events_color_check;
 alter table cal_events add constraint cal_events_color_check check (color is null or color ~ '^#[0-9a-fA-F]{6}$');
 
+-- 나만 보기: 다른 사람(그리고 로그인 안 한 사람)에게는 아예 안 내보냄
+alter table cal_events add column if not exists private boolean not null default false;
+drop policy if exists "cal read" on cal_events;
+create policy "cal read" on cal_events for select to anon, authenticated using (not private);
+
+-- 내 '나만 보기' 일정은 로그인 확인 후 이 함수로만 가져옴
+create or replace function cal_my_private(p_grp text, p_token text, p_start date, p_end date)
+returns setof cal_events language plpgsql security definer set search_path = public, extensions as $$
+declare m text := cal_auth(p_grp, p_token);
+begin
+  return query select * from cal_events e where e.grp = p_grp and e.private and e.owner = m and e.date between p_start and p_end order by e.created_at;
+end $$;
+
 drop function if exists cal_add_event(text, text, date, text, text, text);
-create or replace function cal_add_event(p_grp text, p_token text, p_date date, p_time text, p_text text, p_kind text, p_color text default null)
+drop function if exists cal_add_event(text, text, date, text, text, text, text);
+create or replace function cal_add_event(p_grp text, p_token text, p_date date, p_time text, p_text text, p_kind text, p_color text default null, p_private boolean default false)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare m text := cal_auth(p_grp, p_token);
 begin
-  insert into cal_events (grp, date, time, text, kind, owner, color)
-  values (p_grp, p_date, nullif(p_time, ''), p_text, p_kind, m, case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end);
+  insert into cal_events (grp, date, time, text, kind, owner, color, private)
+  values (p_grp, p_date, nullif(p_time, ''), p_text, p_kind, m, case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end, coalesce(p_private, false));
 end $$;
 
-create or replace function cal_edit_event(p_grp text, p_token text, p_id uuid, p_time text, p_text text, p_kind text, p_color text)
+drop function if exists cal_edit_event(text, text, uuid, text, text, text, text);
+create or replace function cal_edit_event(p_grp text, p_token text, p_id uuid, p_time text, p_text text, p_kind text, p_color text, p_private boolean default null)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare m text := cal_auth(p_grp, p_token);
 begin
   update cal_events set time = nullif(p_time, ''), text = p_text, kind = p_kind,
-    color = case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end
+    color = case when p_color ~ '^#[0-9a-fA-F]{6}$' then p_color end,
+    private = coalesce(p_private, private)
   where id = p_id and grp = p_grp and owner = m;
   if not found then raise exception 'NOT_OWNER'; end if;
 end $$;
@@ -221,9 +237,10 @@ grant execute on function cal_register(text, text, text, text, date, date, text)
 grant execute on function cal_login(text, text, text) to anon, authenticated;
 grant execute on function cal_logout(text, text) to anon, authenticated;
 grant execute on function cal_save_member(text, text, text, text, text, date, date, text) to anon, authenticated;
-grant execute on function cal_add_event(text, text, date, text, text, text, text) to anon, authenticated;
+grant execute on function cal_add_event(text, text, date, text, text, text, text, boolean) to anon, authenticated;
+grant execute on function cal_my_private(text, text, date, date) to anon, authenticated;
 grant execute on function cal_update_event(text, text, uuid, boolean) to anon, authenticated;
-grant execute on function cal_edit_event(text, text, uuid, text, text, text, text) to anon, authenticated;
+grant execute on function cal_edit_event(text, text, uuid, text, text, text, text, boolean) to anon, authenticated;
 grant execute on function cal_delete_event(text, text, uuid) to anon, authenticated;
 grant execute on function cal_set_stay(text, text, date, text) to anon, authenticated;
 grant execute on function cal_set_memo(text, text, date, text, text) to anon, authenticated;

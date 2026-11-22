@@ -1,5 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230738';
-import { parseQuick } from './quick.js?v=2611230738';
+import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230742';
+import { parseQuick } from './quick.js?v=2611230742';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -50,6 +50,10 @@ async function supabaseStore(url, key) {
   const G = 'grp=eq.' + encodeURIComponent(group);
   let token = null;
   const rpc = (fn, args) => sb('rpc/' + fn, { method: 'POST', body: JSON.stringify({ p_grp: group, ...args }) });
+  // 내 '나만 보기' 일정 (로그인했을 때만, 서버가 본인 확인 후 내줌)
+  const myPrivate = (start, end) => token
+    ? rpc('cal_my_private', { p_token: token, p_start: start, p_end: end }).then(r => (r || []).map(({ grp, created_at, ...e }) => e)).catch(() => [])
+    : Promise.resolve([]);
   // 주기적으로 새로고침 (10초) + 창으로 돌아올 때 + 내가 저장한 직후
   const watchers = new Set();
   const refreshAll = () => watchers.forEach(f => f());
@@ -79,25 +83,27 @@ async function supabaseStore(url, key) {
     logout: () => rpc('cal_logout', { p_token: token }).catch(() => {}),
     saveMember: m => after(rpc('cal_save_member', { p_token: token, p_name: m.name, p_org: m.org, p_room: m.room, p_st: m.st || null, p_en: m.en || null, p_new_pw: m.newPw || null })),
     watchWeek: (start, end, cb) => watch(async () => {
-      const [events, stays, memos] = await Promise.all([
-        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color&order=created_at`),
+      const [pub, priv, stays, memos] = await Promise.all([
+        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color,private&order=created_at`),
+        myPrivate(start, end),
         sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
         sb(`cal_memos?${G}&week=gte.${start}&week=lte.${end}&select=member,week,goal,memo`),
       ]);
-      return { events, stays, memos };
+      return { events: [...pub, ...priv], stays, memos };
     }, cb),
-    addEvent: e => after(rpc('cal_add_event', { p_token: token, p_date: e.date, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null })),
+    addEvent: e => after(rpc('cal_add_event', { p_token: token, p_date: e.date, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null, p_private: !!e.private })),
     updateEvent: (id, p) => after(rpc('cal_update_event', { p_token: token, p_id: id, p_done: !!p.done })),
     deleteEvent: id => after(rpc('cal_delete_event', { p_token: token, p_id: id })),
-    editEvent: (id, e) => after(rpc('cal_edit_event', { p_token: token, p_id: id, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null })),
+    editEvent: (id, e) => after(rpc('cal_edit_event', { p_token: token, p_id: id, p_time: e.time || null, p_text: e.text, p_kind: e.kind, p_color: e.color || null, p_private: !!e.private })),
     setStay: (member, date, stay) => after(rpc('cal_set_stay', { p_token: token, p_date: date, p_stay: stay })),
     setMemo: (member, week, data) => after(rpc('cal_set_memo', { p_token: token, p_week: week, p_goal: data.goal, p_memo: data.memo })),
     loadRange: async (start, end) => {
-      const [events, stays] = await Promise.all([
-        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color&order=created_at`),
+      const [pub, priv, stays] = await Promise.all([
+        sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done,color,private&order=created_at`),
+        myPrivate(start, end),
         sb(`cal_stays?${G}&date=gte.${start}&date=lte.${end}&select=member,date,stay`),
       ]);
-      return { events, stays };
+      return { events: [...pub, ...priv], stays };
     },
   };
 }
@@ -141,18 +147,18 @@ function localStore() {
       Object.assign(x, { name: m.name, org: m.org, room: m.room, st: m.st, en: m.en }); put();
     },
     watchWeek: (start, end, cb) => sub(() => cb({
-      events: vals(d.events).filter(e => e.date >= start && e.date <= end),
+      events: vals(d.events).filter(e => e.date >= start && e.date <= end && (!e.private || e.owner === me)),
       stays: vals(d.stays).filter(s => s.date >= start && s.date <= end),
       memos: vals(d.memos).filter(m => m.week >= start && m.week <= end),
     })),
     addEvent: async e => { d.events[uid()] = { ...e, owner: me, done: false }; put(); },
     updateEvent: async (id, p) => { Object.assign(d.events[id], p); put(); },
     deleteEvent: async id => { delete d.events[id]; put(); },
-    editEvent: async (id, e) => { const x = d.events[id]; if (!x || x.owner !== me) throw err('NOT_OWNER'); Object.assign(x, { time: e.time, text: e.text, kind: e.kind, color: e.color || null }); put(); },
+    editEvent: async (id, e) => { const x = d.events[id]; if (!x || x.owner !== me) throw err('NOT_OWNER'); Object.assign(x, { time: e.time, text: e.text, kind: e.kind, color: e.color || null, private: !!e.private }); put(); },
     setStay: async (member, date, stay) => { d.stays[`${member}_${date}`] = { member, date, stay }; put(); },
     setMemo: async (member, week, data) => { const k = `${member}_${week}`; d.memos[k] = { ...d.memos[k], member, week, ...data }; put(); },
     loadRange: async (start, end) => ({
-      events: vals(d.events).filter(e => e.date >= start && e.date <= end),
+      events: vals(d.events).filter(e => e.date >= start && e.date <= end && (!e.private || e.owner === me)),
       stays: vals(d.stays).filter(x => x.date >= start && x.date <= end),
     }),
   };
@@ -165,6 +171,7 @@ let me = session?.id || null, filter = 'all', cur = monday(new Date()), unWeek =
 const colorOf = id => { const i = members.findIndex(m => m.id === id); return COLORS[(i < 0 ? 0 : i) % COLORS.length]; };
 const nameOf = id => members.find(m => m.id === id)?.name || '알 수 없음';
 const myInfo = () => members.find(m => m.id === me);
+const LOCK = '<svg class="lock" viewBox="0 0 12 14" width="10" height="12" aria-label="나만 보기" role="img"><rect x="1" y="6" width="10" height="7.5" rx="1.5" fill="currentColor"/><path d="M3.3 6V4.3a2.7 2.7 0 0 1 5.4 0V6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
 const evColor = e => e.color || (e.kind === '공지' ? 'var(--acc)' : colorOf(e.owner));
 
 function prog() {
@@ -208,7 +215,7 @@ function dayHtml(d, today) {
       ${others.length ? `<div class="stays">${others.map(s => `<span style="border-color:${colorOf(s.member)}">${esc(nameOf(s.member))} ${esc(STAY_L[s.stay] || s.stay)}</span>`).join('')}</div>` : ''}
       <ul>${evs.length ? evs.map(e => `<li class="${e.done ? 'done' : ''}" style="--c:${evColor(e)}">
         ${e.owner === me ? `<input type="checkbox" data-chk="${esc(e.id)}" ${e.done ? 'checked' : ''} aria-label="완료">` : ''}
-        ${e.owner === me ? `<button type="button" class="m ed" data-edit="${esc(e.id)}" aria-label="일정 수정: ${esc(e.text)}">` : '<span class="m">'}<span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}${e.owner === me ? '</button>' : '</span>'}
+        ${e.owner === me ? `<button type="button" class="m ed" data-edit="${esc(e.id)}" aria-label="일정 수정: ${esc(e.text)}">` : '<span class="m">'}<span class="who">${e.private ? LOCK + ' 나만 · ' : ''}${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}${e.owner === me ? '</button>' : '</span>'}
         ${e.owner === me ? `<button class="x" data-del="${esc(e.id)}" aria-label="삭제">×</button>` : ''}</li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>
       ${me ? `<button class="add" data-add="${date}">+ 일정 추가</button>` : ''}
     </section>`;
@@ -404,12 +411,13 @@ function qPreview() {
   qItems = parseQuick(t.value);
   $('qPrev').innerHTML = qItems.map(q => q.error
     ? `<div class="qi bad">${esc(q.src)} — ${esc(q.error)}</div>`
-    : `<div class="qi" style="--c:${q.color || colorOf(me)}"><span class="qd">${qDate(q.date)}</span>${q.time ? `<span class="qt">${q.time}</span>` : ''}<span class="qx">${esc(q.text)}</span>${q.guessedDate ? '<span class="qg">날짜 없음 → 오늘</span>' : ''}</div>`).join('');
+    : `<div class="qi" style="--c:${q.color || colorOf(me)}"><span class="qd">${qDate(q.date)}</span>${q.time ? `<span class="qt">${q.time}</span>` : ''}<span class="qx">${q.private || $('qPrivate').checked ? LOCK + ' ' : ''}${esc(q.text)}</span>${q.guessedDate ? '<span class="qg">날짜 없음 → 오늘</span>' : ''}</div>`).join('');
   const ok = qItems.filter(q => !q.error).length;
   $('qOk').disabled = !ok;
   $('qOk').textContent = ok > 1 ? `${ok}개 추가` : '추가';
 }
 $('qIn').addEventListener('input', qPreview);
+$('qPrivate').addEventListener('change', qPreview);
 $('qIn').addEventListener('keydown', e => {
   // 엔터 = 추가, Shift+엔터 = 줄바꿈
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('quick').requestSubmit(); }
@@ -420,7 +428,7 @@ $('quick').addEventListener('submit', async e => {
   $('qOk').disabled = true;
   let n = 0;
   for (const q of good) {
-    try { await store.addEvent({ date: q.date, time: q.time, text: q.text.slice(0, 200), kind: q.kind, owner: me, done: false, color: q.color }); n++; }
+    try { await store.addEvent({ date: q.date, time: q.time, text: q.text.slice(0, 200), kind: q.kind, owner: me, done: false, color: q.color, private: q.private || $('qPrivate').checked }); n++; }
     catch (x) { if (x.code === 'SESSION_INVALID') { setSession(null); openJoin(); } banner('추가 실패: ' + x.message, true); break; }
   }
   if (n) {
@@ -470,12 +478,13 @@ function openEdit(id) {
   $('fTime').value = ev.time || ''; $('fText').value = ev.text || '';
   if ([...$('fKind').options].some(o => o.value === ev.kind)) $('fKind').value = ev.kind;
   renderSwatches(ev.color || null);
+  $('fPrivate').checked = !!ev.private;
   $('evOk').textContent = '수정';
   $('evDlg').showModal(); $('fText').focus();
 }
 $('evFrm').addEventListener('submit', e => {
   e.preventDefault(); const text = $('fText').value.trim(); if (!text) return;
-  const data = { time: $('fTime').value, text, kind: $('fKind').value, color: pickColor };
+  const data = { time: $('fTime').value, text, kind: $('fKind').value, color: pickColor, private: $('fPrivate').checked };
   if (editId) {
     // 화면에 바로 반영하고 서버에 저장
     const ev = week.events.find(x => x.id === editId); if (ev) Object.assign(ev, data, { color: pickColor || null });
@@ -605,7 +614,7 @@ function renderMonth() {
     const out = d.getMonth() !== mCur.getMonth();
     const lines = [
       ...stays.map(x => `<i class="st" style="--c:${colorOf(x.member)}">${solo ? '' : esc(shortName(nameOf(x.member))) + ' '}${esc(STAY_L[x.stay] || x.stay)}</i>`),
-      ...events.map(e => `<i style="--c:${evColor(e)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.text)}</i>`),
+      ...events.map(e => `<i style="--c:${evColor(e)}">${e.private ? LOCK + ' ' : ''}${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.text)}</i>`),
     ];
     const dots = [...stays.map(x => colorOf(x.member)), ...events.map(e => evColor(e))];
     html += `<button class="mc${out ? ' out' : ''}${date === today ? ' today' : ''}${date === mSel ? ' sel' : ''}" data-md="${date}" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일, 일정 ${events.length}개">
@@ -621,7 +630,7 @@ function renderMonthDay() {
   const d = new Date(mSel), { stays, events } = mItems(mSel);
   $('mDay').innerHTML = `<div class="mdh"><b>${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[(d.getDay() + 6) % 7]}요일</b><button id="mGo">이 주 보기 ›</button></div>
     ${stays.length ? `<div class="stays">${stays.map(x => `<span style="border-color:${colorOf(x.member)}">${esc(nameOf(x.member))} ${esc(STAY_L[x.stay] || x.stay)}</span>`).join('')}</div>` : ''}
-    <ul>${events.length ? events.map(e => `<li style="--c:${evColor(e)}"><span class="m"><span class="who">${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span></li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>`;
+    <ul>${events.length ? events.map(e => `<li style="--c:${evColor(e)}"><span class="m"><span class="who">${e.private ? LOCK + ' 나만 · ' : ''}${esc(nameOf(e.owner))} · ${esc(e.kind)}</span>${e.time ? `<span class="t">${esc(e.time)}</span> ` : ''}${esc(e.text)}</span></li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>`;
 }
 function openMonth() {
   const t = addDays(cur, 3); mCur = new Date(t.getFullYear(), t.getMonth(), 1);
