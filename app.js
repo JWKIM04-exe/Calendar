@@ -1,5 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230728';
-import { parseQuick } from './quick.js?v=2611230728';
+import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230731';
+import { parseQuick } from './quick.js?v=2611230731';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -223,7 +223,7 @@ function renderWeek() {
 function render() {
   $('editMe').textContent = me ? '내 정보' : '로그인';
   $('goal').disabled = $('memo').disabled = !me;
-  $('quick').hidden = !me;
+  $('quick').hidden = !me; qSize();
   $('goal').placeholder = me ? '예: 자격증 공부 하루 1시간' : '로그인하면 쓸 수 있어요';
   $('memo').placeholder = me ? '이번 주에 있었던 일, 다음 주에 챙길 것' : '로그인하면 쓸 수 있어요';
   prog(); renderMembers(); renderWeek();
@@ -372,8 +372,17 @@ $('week').addEventListener('keydown', e => {
 /* ---------- 빠른 추가 ---------- */
 let qItems = [];
 const qDate = ds => { const d = new Date(ds); return `${d.getMonth() + 1}/${d.getDate()}(${DAYS[(d.getDay() + 6) % 7]})`; };
+// 입력칸 높이: 글이 없으면 예시 문장이 다 보이게, 있으면 글 길이에 맞게
+function qSize() {
+  const t = $('qIn'); if (!t.offsetParent) return;
+  t.style.height = 'auto';
+  let h;
+  if (!t.value) { t.value = t.placeholder; h = t.scrollHeight; t.value = ''; } else h = t.scrollHeight;
+  t.style.height = Math.max(46, h + 2) + 'px';
+}
+const qObs = new ResizeObserver(() => qSize()); qObs.observe($('quick'));
 function qPreview() {
-  const t = $('qIn'); t.style.height = 'auto'; t.style.height = Math.max(46, t.scrollHeight + 2) + 'px';
+  qSize(); const t = $('qIn');
   qItems = parseQuick(t.value);
   $('qPrev').innerHTML = qItems.map(q => q.error
     ? `<div class="qi bad">${esc(q.src)} — ${esc(q.error)}</div>`
