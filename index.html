@@ -167,6 +167,20 @@ dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{backg
 .cnow{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-left:4px}
 .ed{all:unset;cursor:pointer;flex:1;min-width:0;border-radius:4px}
 .ed:hover{background:#00000008}.ed:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+.quick{margin:0 0 22px;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:6px}
+.ql{display:block;font-family:"Noto Serif KR",serif;font-weight:700;margin-bottom:6px}
+.qrow{display:flex;gap:8px;align-items:flex-start}
+.qrow textarea{flex:1;min-height:46px;height:46px;padding:11px 12px;resize:none;line-height:1.45;overflow:hidden}
+.qrow button{flex:none;min-height:46px}
+.qrow button:disabled{opacity:.45;cursor:default}
+.qprev{display:flex;flex-direction:column;gap:6px;margin-top:10px}.qprev:empty{display:none}
+.qi{display:flex;align-items:center;gap:8px;font-size:14px;padding:6px 10px;border-radius:6px;background:var(--desk);border-left:4px solid var(--c)}
+.qi .qd{font-family:"Bodoni Moda",serif;font-weight:600;white-space:nowrap}
+.qi .qt{font-family:"Bodoni Moda",serif;white-space:nowrap;color:var(--sub)}
+.qi .qx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qi .qg{font-size:12px;color:var(--sub);white-space:nowrap}
+.qi.bad{border-left-color:#c03030;color:#c03030}
+.qhelp{margin:8px 0 0;font-size:12.5px;color:var(--sub)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;opacity:0}
 .fhint{margin:0;font-size:13px;color:var(--psub)}.fhint:empty,.ferr:empty{display:none}
 .ferr{margin:0;font-size:14px;color:#a02020;font-weight:500}
@@ -212,6 +226,15 @@ textarea:disabled{opacity:.6}
     <button id="now">이번 주</button>
     <button id="next" aria-label="다음 주">다음 주 ›</button>
   </div>
+  <form class="quick" id="quick" autocomplete="off" hidden>
+    <label for="qIn" class="ql">빠른 추가</label>
+    <div class="qrow">
+      <textarea id="qIn" rows="1" placeholder="12일 오전9시 다이소가기, 15일 오후7시 오징어먹기 빨강" enterkeyhint="done"></textarea>
+      <button class="pri" id="qOk" type="submit" disabled>추가</button>
+    </div>
+    <div class="qprev" id="qPrev" aria-live="polite"></div>
+    <p class="qhelp">날짜 · 시간 · 내용 · (색) 순서로 적고, 여러 개는 쉼표나 줄바꿈으로 나눠요. 날짜를 빼면 오늘, 색을 빼면 기본색이에요.</p>
+  </form>
   <div class="cal">
     <div class="rings" id="rings" aria-hidden="true"></div>
     <div class="paper" id="paper"><div class="week" id="week"></div></div>
@@ -271,6 +294,6 @@ textarea:disabled{opacity:.6}
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=2611230724"></script>
+<script type="module" src="app.js?v=2611230728"></script>
 </body>
 </html>

@@ -1,4 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230724';
+import { SUPABASE_URL, SUPABASE_KEY, DEFAULT_GROUP } from './config.js?v=2611230728';
+import { parseQuick } from './quick.js?v=2611230728';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -222,6 +223,7 @@ function renderWeek() {
 function render() {
   $('editMe').textContent = me ? '내 정보' : '로그인';
   $('goal').disabled = $('memo').disabled = !me;
+  $('quick').hidden = !me;
   $('goal').placeholder = me ? '예: 자격증 공부 하루 1시간' : '로그인하면 쓸 수 있어요';
   $('memo').placeholder = me ? '이번 주에 있었던 일, 다음 주에 챙길 것' : '로그인하면 쓸 수 있어요';
   prog(); renderMembers(); renderWeek();
@@ -367,6 +369,42 @@ function saveStay(date) {
 $('week').addEventListener('keydown', e => {
   if (e.target.dataset.stayin && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
+/* ---------- 빠른 추가 ---------- */
+let qItems = [];
+const qDate = ds => { const d = new Date(ds); return `${d.getMonth() + 1}/${d.getDate()}(${DAYS[(d.getDay() + 6) % 7]})`; };
+function qPreview() {
+  const t = $('qIn'); t.style.height = 'auto'; t.style.height = Math.max(46, t.scrollHeight + 2) + 'px';
+  qItems = parseQuick(t.value);
+  $('qPrev').innerHTML = qItems.map(q => q.error
+    ? `<div class="qi bad">${esc(q.src)} — ${esc(q.error)}</div>`
+    : `<div class="qi" style="--c:${q.color || colorOf(me)}"><span class="qd">${qDate(q.date)}</span>${q.time ? `<span class="qt">${q.time}</span>` : ''}<span class="qx">${esc(q.text)}</span>${q.guessedDate ? '<span class="qg">날짜 없음 → 오늘</span>' : ''}</div>`).join('');
+  const ok = qItems.filter(q => !q.error).length;
+  $('qOk').disabled = !ok;
+  $('qOk').textContent = ok > 1 ? `${ok}개 추가` : '추가';
+}
+$('qIn').addEventListener('input', qPreview);
+$('qIn').addEventListener('keydown', e => {
+  // 엔터 = 추가, Shift+엔터 = 줄바꿈
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('quick').requestSubmit(); }
+});
+$('quick').addEventListener('submit', async e => {
+  e.preventDefault(); if (!me) return;
+  const good = qItems.filter(q => !q.error); if (!good.length) return;
+  $('qOk').disabled = true;
+  let n = 0;
+  for (const q of good) {
+    try { await store.addEvent({ date: q.date, time: q.time, text: q.text.slice(0, 200), kind: q.kind, owner: me, done: false, color: q.color }); n++; }
+    catch (x) { if (x.code === 'SESSION_INVALID') { setSession(null); openJoin(); } banner('추가 실패: ' + x.message, true); break; }
+  }
+  if (n) {
+    const outside = good.slice(0, n).filter(q => q.date < ymd(cur) || q.date > ymd(addDays(cur, 6)));
+    toast(n === 1 ? `${qDate(good[0].date)}에 추가했어요` : `${n}개 추가했어요` + (outside.length ? ` (다른 주 ${outside.length}개는 한 달 보기에서 확인)` : ''));
+    $('qIn').value = good.slice(n).map(q => q.src).concat(qItems.filter(q => q.error).map(q => q.src)).join(', ');
+    qPreview(); store.refresh?.();
+  }
+  $('qOk').disabled = !qItems.some(q => !q.error);
+});
+
 /* ---------- 일정 색 ---------- */
 const SWATCHES = ['#2f6fdf', '#1f9d6b', '#e8572a', '#d23c3c', '#d23c7a', '#9b4fd6', '#d6a21f', '#2aa6b8', '#7a4b2a', '#1f2723'];
 const COLOR_KEY = 'daechae-last-color';
