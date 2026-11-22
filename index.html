@@ -57,7 +57,14 @@ button.pri{background:var(--ink);color:var(--desk)}
  background-image:radial-gradient(circle at 50% 12px,var(--desk) 3.5px,transparent 4px);background-size:calc(100%/var(--n,40)) 100%;background-repeat:repeat-x}
 .paper::before{content:"";position:absolute;left:0;right:0;top:26px;border-top:1px solid var(--rule)}
 .stand{height:26px;background:linear-gradient(var(--stand),#0f1411);border-radius:0 0 4px 4px}
-.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.week{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:calc(100%/7);overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.week::-webkit-scrollbar{display:none}
+.day{scroll-snap-align:start}
+.edge{display:none;scroll-snap-align:end;border:0;border-radius:0;border-left:1px solid var(--rule);background:#ebe4d1;color:var(--pink);flex-direction:column;align-items:center;justify-content:center;gap:4px;font-family:"Noto Serif KR",serif;font-size:15px;min-height:100%}
+.edge[data-go="-1"]{scroll-snap-align:start;border-left:0;border-right:1px solid var(--rule)}
+.edge span{font-family:"Bodoni Moda",serif;font-size:48px;line-height:1}
+.edge small{font-family:"Bodoni Moda",serif;color:var(--psub);font-size:13px}
+.edge:hover{background:#e4dcc6}
 .day{padding:10px 12px 14px;border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:8px;min-height:360px}
 .day:first-child{border-left:0}
 .dh{display:flex;align-items:baseline;gap:6px;min-height:20px}
@@ -106,17 +113,19 @@ dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{backg
 @media(prefers-reduced-motion:reduce){.toast{transition:none}}
 
 @media(max-width:600px){.nav h2{flex-basis:100%}.acts button{min-height:40px;font-size:14px}}
-/* 좁은 화면: 날짜를 세로로 쌓고 숫자는 왼쪽 */
+/* 좁은 화면: 가로 그대로, 옆으로 밀어서 넘기기 (2칸 + 다음 칸 살짝) */
 @media(max-width:900px){
- .week{grid-template-columns:1fr}
- .day{border-left:0;border-top:1px solid var(--rule);min-height:0;display:grid;grid-template-columns:76px minmax(0,1fr);column-gap:14px;row-gap:6px;padding:14px 16px}
- .day:first-child{border-top:0}
- .day>.dh{grid-column:1;grid-row:1;flex-direction:column;align-items:flex-start;gap:0}
- .day>.dh .yr,.day>.dh .mo{margin:4px 0 0}
- .day>.num{grid-column:1;grid-row:2 / span 4;font-size:52px}
- .day>:not(.dh):not(.num){grid-column:2}
- .day>.stayIn{grid-row:1}
+ .week{grid-auto-columns:calc(100%/3.2)}
+ .edge{display:flex}
+ .day{min-height:340px}
 }
+@media(max-width:600px){
+ .week{grid-auto-columns:calc(100%/2.15)}
+ .num{font-size:52px}
+ .day{padding:10px 10px 14px}
+}
+.hint{display:none;text-align:center;font-size:12px;color:var(--sub);margin-top:10px}
+@media(max-width:900px){.hint{display:block}}
 </style>
 </head>
 <body>
@@ -142,6 +151,7 @@ dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{backg
     <div class="paper" id="paper"><div class="week" id="week"></div></div>
     <div class="stand" aria-hidden="true"></div>
   </div>
+  <p class="hint">옆으로 밀어서 넘기기 · 끝까지 밀면 다른 주로</p>
   <div class="memo">
     <div><label for="goal">내 이번 주 목표</label><textarea id="goal" placeholder="예: 자격증 공부 하루 1시간"></textarea></div>
     <div><label for="memo">내 메모 / 회고</label><textarea id="memo" placeholder="이번 주에 있었던 일, 다음 주에 챙길 것"></textarea></div>

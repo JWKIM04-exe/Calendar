@@ -139,7 +139,8 @@ function renderWeek() {
   const end = addDays(cur, 6), today = ymd(new Date());
   $('wk').textContent = `${cur.getFullYear()}년 ${cur.getMonth() + 1}월 ${cur.getDate()}일 – ${end.getMonth() + 1}월 ${end.getDate()}일`;
   const show = e => filter === 'all' || e.owner === filter || e.kind === '공지';
-  $('week').innerHTML = DAYS.map((n, i) => {
+  const pw = addDays(cur, -7), nw = addDays(cur, 7);
+  $('week').innerHTML = `<button class="edge" data-go="-1"><span>‹</span>이전 주<small>${pw.getMonth() + 1}/${pw.getDate()} –</small></button>` + DAYS.map((n, i) => {
     const date = ymd(addDays(cur, i)), d = addDays(cur, i);
     const myStay = week.stays.find(s => s.member === me && s.date === date)?.stay || 'in';
     const others = week.stays.filter(s => s.date === date && s.member !== me && s.stay !== 'in' && (filter === 'all' || s.member === filter));
@@ -155,7 +156,8 @@ function renderWeek() {
         ${e.owner === me ? `<button class="x" data-del="${esc(e.id)}" aria-label="삭제">×</button>` : ''}</li>`).join('') : '<li class="empty">일정 없음</li>'}</ul>
       ${me ? `<button class="add" data-add="${date}">+ 일정 추가</button>` : ''}
     </section>`;
-  }).join('');
+  }).join('') + `<button class="edge" data-go="1"><span>›</span>다음 주<small>${nw.getMonth() + 1}/${nw.getDate()} –</small></button>`;
+  afterRender();
   const mine = week.memos.find(m => m.member === me) || {};
   if (document.activeElement !== $('goal')) $('goal').value = mine.goal || '';
   if (document.activeElement !== $('memo')) $('memo').value = mine.memo || '';
@@ -244,9 +246,42 @@ let memoT;
 }));
 
 $('members').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; renderMembers(); renderWeek(); } });
-$('prev').addEventListener('click', () => { cur = addDays(cur, -7); watchWeek(); });
-$('next').addEventListener('click', () => { cur = addDays(cur, 7); watchWeek(); });
-$('now').addEventListener('click', () => { cur = monday(new Date()); watchWeek(); });
+/* ---------- 슬라이드 ---------- */
+let pendingScroll = 'today', edgeLock = false;
+const dayEls = () => [...$('week').querySelectorAll('.day')];
+function goWeek(dir) {
+  if (edgeLock) return; edgeLock = true; setTimeout(() => { edgeLock = false; }, 700);
+  cur = addDays(cur, 7 * dir); pendingScroll = dir > 0 ? 'start' : 'end'; watchWeek();
+}
+function scrollToDay(i, smooth) {
+  const w = $('week'), d = dayEls()[i]; if (!d) return;
+  const last = dayEls()[6], max = last.offsetLeft + last.offsetWidth - w.clientWidth;
+  w.scrollTo({ left: Math.min(d.offsetLeft, max), behavior: smooth ? 'smooth' : 'auto' });
+}
+const edgeObs = new IntersectionObserver(es => {
+  for (const e of es) if (e.isIntersecting && e.intersectionRatio > 0.9 && !pendingScroll) goWeek(+e.target.dataset.go);
+}, { root: $('week'), threshold: [0.9] });
+function afterRender() {
+  const w = $('week');
+  w.querySelectorAll('.edge').forEach(el => edgeObs.observe(el));
+  if (!pendingScroll) return;
+  const mode = pendingScroll;
+  requestAnimationFrame(() => {
+    if (mode === 'start') scrollToDay(0);
+    else if (mode === 'end') { const d = dayEls()[6]; w.scrollTo({ left: d.offsetLeft + d.offsetWidth - w.clientWidth }); }
+    else { const t = dayEls().findIndex(d => d.classList.contains('today')); scrollToDay(t < 0 ? 0 : Math.max(0, t)); }
+    setTimeout(() => { pendingScroll = null; }, 400);
+  });
+}
+$('week').addEventListener('click', e => { const b = e.target.closest('.edge'); if (b) goWeek(+b.dataset.go); });
+addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea,select,dialog')) return;
+  if (e.key === 'ArrowRight') $('week').scrollBy({ left: dayEls()[0].offsetWidth, behavior: 'smooth' });
+  if (e.key === 'ArrowLeft') $('week').scrollBy({ left: -dayEls()[0].offsetWidth, behavior: 'smooth' });
+});
+$('prev').addEventListener('click', () => goWeek(-1));
+$('next').addEventListener('click', () => goWeek(1));
+$('now').addEventListener('click', () => { cur = monday(new Date()); pendingScroll = 'today'; watchWeek(); });
 $('invite').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}?g=${encodeURIComponent(group)}`;
   try { await navigator.clipboard.writeText(url); toast('초대 링크를 복사했어요'); } catch { prompt('이 링크를 공유하세요', url); }
