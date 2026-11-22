@@ -15,10 +15,21 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 const group = (new URLSearchParams(location.search).get('g') || DEFAULT_GROUP).replace(/[^\w가-힣-]/g, '').slice(0, 40) || 'default';
-const ME_KEY = `daechae-me-${group}`;
+const SESS_KEY = `daechae-session-${group}`;
 
 function banner(msg, err) { const b = $('banner'); b.textContent = msg; b.className = 'banner' + (err ? ' err' : ''); b.hidden = !msg; }
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1800); }
+
+const ERR = {
+  SESSION_INVALID: '로그인이 풀렸어요. 다시 로그인해 주세요.',
+  PW_WRONG: '비밀번호가 틀렸어요.',
+  PW_SHORT: '비밀번호는 4자 이상으로 정해 주세요.',
+  NAME_TAKEN: '이미 등록된 이름이에요. 목록에서 이름을 골라 로그인하세요.',
+  NAME_EMPTY: '이름을 입력해 주세요.',
+  NOT_OWNER: '본인 일정만 고칠 수 있어요.',
+  NO_MEMBER: '등록된 사람이 아니에요.',
+};
+const err = code => Object.assign(new Error(ERR[code] || code), { code });
 
 /* ---------- 저장소: Supabase ---------- */
 async function supabaseStore(url, key) {
@@ -26,15 +37,18 @@ async function supabaseStore(url, key) {
     const res = await fetch(url + '/rest/v1/' + path, { ...opts,
       headers: { apikey: key, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
     if (!res.ok) {
-      const t = (await res.text()).slice(0, 160);
-      throw new Error(res.status === 404 || /cal_/.test(t) && /exist|schema cache/.test(t)
-        ? '캘린더 테이블이 없어요. supabase.sql을 SQL Editor에서 실행해 주세요.' : `서버 오류 (${res.status}) ${t}`);
+      const t = await res.text();
+      let j = {}; try { j = JSON.parse(t); } catch {}
+      if (ERR[j.message]) throw err(j.message);
+      if (j.code === 'PGRST202' || res.status === 404 || /cal_/.test(t) && /exist|schema cache/.test(t))
+        throw new Error('서버 설정이 아직 안 됐어요. supabase.sql 전체를 SQL Editor에서 실행해 주세요.');
+      throw new Error(`서버 오류 (${res.status}) ${t.slice(0, 160)}`);
     }
     const t = await res.text(); return t ? JSON.parse(t) : null;
   };
   const G = 'grp=eq.' + encodeURIComponent(group);
-  const upsert = (table, conflict, row) => sb(`${table}?on_conflict=${conflict}`, { method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ grp: group, ...row }) });
+  let token = null;
+  const rpc = (fn, args) => sb('rpc/' + fn, { method: 'POST', body: JSON.stringify({ p_grp: group, ...args }) });
   // 주기적으로 새로고침 (10초) + 창으로 돌아올 때 + 내가 저장한 직후
   const watchers = new Set();
   const refreshAll = () => watchers.forEach(f => f());
@@ -58,8 +72,11 @@ async function supabaseStore(url, key) {
     mode: 'supabase',
     refresh: refreshAll,
     watchMembers: cb => watch(() => sb(`cal_members?${G}&select=id,name,org,room,st,en`), cb),
-    saveMember: m => after(upsert('cal_members', 'grp,id', { id: m.id, name: m.name, org: m.org || null,
-      room: m.room || null, st: m.st || null, en: m.en || null, updated_at: new Date().toISOString() })),
+    setToken: t => { token = t; },
+    register: m => after(rpc('cal_register', { p_name: m.name, p_org: m.org, p_room: m.room, p_st: m.st || null, p_en: m.en || null, p_pw: m.pw })),
+    login: (id, pw) => rpc('cal_login', { p_id: id, p_pw: pw }),
+    logout: () => rpc('cal_logout', { p_token: token }).catch(() => {}),
+    saveMember: m => after(rpc('cal_save_member', { p_token: token, p_name: m.name, p_org: m.org, p_room: m.room, p_st: m.st || null, p_en: m.en || null, p_new_pw: m.newPw || null })),
     watchWeek: (start, end, cb) => watch(async () => {
       const [events, stays, memos] = await Promise.all([
         sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done&order=created_at`),
@@ -68,13 +85,11 @@ async function supabaseStore(url, key) {
       ]);
       return { events, stays, memos };
     }, cb),
-    addEvent: e => after(sb('cal_events', { method: 'POST', headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({ grp: group, date: e.date, time: e.time || null, text: e.text, kind: e.kind, owner: e.owner, done: false }) })),
-    updateEvent: (id, p) => after(sb(`cal_events?id=eq.${encodeURIComponent(id)}&${G}`, { method: 'PATCH',
-      headers: { Prefer: 'return=minimal' }, body: JSON.stringify(p) })),
-    deleteEvent: id => after(sb(`cal_events?id=eq.${encodeURIComponent(id)}&${G}`, { method: 'DELETE' })),
-    setStay: (member, date, stay) => after(upsert('cal_stays', 'grp,member,date', { member, date, stay })),
-    setMemo: (member, week, data) => after(upsert('cal_memos', 'grp,member,week', { member, week, goal: data.goal, memo: data.memo })),
+    addEvent: e => after(rpc('cal_add_event', { p_token: token, p_date: e.date, p_time: e.time || null, p_text: e.text, p_kind: e.kind })),
+    updateEvent: (id, p) => after(rpc('cal_update_event', { p_token: token, p_id: id, p_done: !!p.done })),
+    deleteEvent: id => after(rpc('cal_delete_event', { p_token: token, p_id: id })),
+    setStay: (member, date, stay) => after(rpc('cal_set_stay', { p_token: token, p_date: date, p_stay: stay })),
+    setMemo: (member, week, data) => after(rpc('cal_set_memo', { p_token: token, p_week: week, p_goal: data.goal, p_memo: data.memo })),
     loadRange: async (start, end) => {
       const [events, stays] = await Promise.all([
         sb(`cal_events?${G}&date=gte.${start}&date=lte.${end}&select=id,date,time,text,kind,owner,done&order=created_at`),
@@ -86,6 +101,10 @@ async function supabaseStore(url, key) {
 }
 
 /* ---------- 저장소: 로컬(설정 전 미리보기) ---------- */
+async function sha(t) {
+  try { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('daechae:' + t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+  catch { return 'p:' + t; }
+}
 function localStore() {
   const KEY = `daechae-local-${group}`;
   const load = () => { try { return JSON.parse(lsGet(KEY)) || {}; } catch { return {}; } };
@@ -98,14 +117,33 @@ function localStore() {
   const vals = (o, id = true) => Object.entries(o).map(([k, v]) => (id ? { id: k, ...v } : v));
   return {
     mode: 'local',
-    watchMembers: cb => sub(() => cb(vals(d.members))),
-    saveMember: async m => { d.members[m.id] = { ...d.members[m.id], ...m }; put(); },
+    watchMembers: cb => sub(() => cb(vals(d.members).map(({ pw, ...r }) => r))),
+    setToken: () => {},
+    register: async m => {
+      if ((m.pw || '').length < 4) throw err('PW_SHORT');
+      if (Object.values(d.members).some(x => x.name === m.name)) throw err('NAME_TAKEN');
+      const id = uid(); d.members[id] = { name: m.name, org: m.org, room: m.room, st: m.st, en: m.en, pw: await sha(m.pw) }; put();
+      return { id, token: id };
+    },
+    login: async (id, pw) => {
+      const x = d.members[id]; if (!x) throw err('NO_MEMBER');
+      const h = await sha(pw || '');
+      if (!x.pw) { if ((pw || '').length < 4) throw err('PW_SHORT'); x.pw = h; put(); }
+      else if (x.pw !== h) throw err('PW_WRONG');
+      return id;
+    },
+    logout: async () => {},
+    saveMember: async m => {
+      const x = d.members[me]; if (!x) throw err('SESSION_INVALID');
+      if (m.newPw) { if (m.newPw.length < 4) throw err('PW_SHORT'); x.pw = await sha(m.newPw); }
+      Object.assign(x, { name: m.name, org: m.org, room: m.room, st: m.st, en: m.en }); put();
+    },
     watchWeek: (start, end, cb) => sub(() => cb({
       events: vals(d.events).filter(e => e.date >= start && e.date <= end),
       stays: vals(d.stays).filter(s => s.date >= start && s.date <= end),
       memos: vals(d.memos).filter(m => m.week === start),
     })),
-    addEvent: async e => { d.events[uid()] = e; put(); },
+    addEvent: async e => { d.events[uid()] = { ...e, owner: me, done: false }; put(); },
     updateEvent: async (id, p) => { Object.assign(d.events[id], p); put(); },
     deleteEvent: async id => { delete d.events[id]; put(); },
     setStay: async (member, date, stay) => { d.stays[`${member}_${date}`] = { member, date, stay }; put(); },
@@ -119,14 +157,15 @@ function localStore() {
 
 /* ---------- 상태 ---------- */
 let store, members = [], week = { events: [], stays: [], memos: [] };
-let me = lsGet(ME_KEY), filter = 'all', cur = monday(new Date()), unWeek = null, target = null;
+let session = (() => { try { return JSON.parse(lsGet(SESS_KEY)) || null; } catch { return null; } })();
+let me = session?.id || null, filter = 'all', cur = monday(new Date()), unWeek = null, target = null;
 const colorOf = id => { const i = members.findIndex(m => m.id === id); return COLORS[(i < 0 ? 0 : i) % COLORS.length]; };
 const nameOf = id => members.find(m => m.id === id)?.name || '알 수 없음';
 const myInfo = () => members.find(m => m.id === me);
 
 function prog() {
   const m = myInfo();
-  if (!m || !m.st || !m.en) { $('dday').textContent = 'D-?'; $('pbar').style.width = '0'; $('ptxt').textContent = m ? '내 정보에서 복무 시작일을 입력하세요' : '내 정보를 등록하세요'; return; }
+  if (!m || !m.st || !m.en) { $('dday').textContent = 'D-?'; $('pbar').style.width = '0'; $('ptxt').textContent = m ? '내 정보에서 복무 시작일을 입력하세요' : '로그인하면 내 복무 D-day가 보여요'; return; }
   const day = 864e5, t = new Date(ymd(new Date())), S = new Date(m.st), E = new Date(m.en);
   const total = Math.round((E - S) / day) + 1, done = Math.min(total, Math.max(0, Math.round((t - S) / day) + 1)), left = Math.round((E - t) / day);
   const p = total > 0 ? done / total * 100 : 0;
@@ -177,7 +216,13 @@ function renderWeek() {
   $('others').innerHTML = os.map(m => `<div><b><span class="dot" style="background:${colorOf(m.member)}"></span>${esc(nameOf(m.member))}의 이번 주</b>${m.goal ? '목표: ' + esc(m.goal) + '\n' : ''}${esc(m.memo || '')}</div>`).join('');
 }
 
-function render() { prog(); renderMembers(); renderWeek(); }
+function render() {
+  $('editMe').textContent = me ? '내 정보' : '로그인';
+  $('goal').disabled = $('memo').disabled = !me;
+  $('goal').placeholder = me ? '예: 자격증 공부 하루 1시간' : '로그인하면 쓸 수 있어요';
+  $('memo').placeholder = me ? '이번 주에 있었던 일, 다음 주에 챙길 것' : '로그인하면 쓸 수 있어요';
+  prog(); renderMembers(); renderWeek();
+}
 
 function watchWeek() {
   if (unWeek) unWeek();
@@ -191,36 +236,86 @@ function watchWeek() {
   renderWeek();
 }
 
-/* ---------- 내 정보 ---------- */
+/* ---------- 로그인 · 내 정보 ---------- */
+function setSession(id, token) {
+  session = id ? { id, token } : null; me = id || null;
+  store.setToken(token || null);
+  if (session) lsSet(SESS_KEY, JSON.stringify(session)); else { try { localStorage.removeItem(SESS_KEY); } catch {} }
+  render();
+}
+let joinMode = 'login';
+function joinShow(mode) {
+  joinMode = mode;
+  const edit = mode === 'edit', isNew = mode === 'new', login = mode === 'login';
+  $('joinT').textContent = edit ? '내 정보' : isNew ? '처음 등록' : '로그인';
+  $('whoWrap').hidden = edit;
+  $('newWrap').hidden = login;
+  $('pw2Wrap').hidden = login;
+  $('logout').hidden = !edit;
+  $('jPwL').textContent = edit ? '새 비밀번호 (바꿀 때만 입력)' : isNew ? '비밀번호 (4자 이상)' : '비밀번호';
+  $('jPw').autocomplete = login ? 'current-password' : 'new-password';
+  $('jHint').textContent = login ? '아직 비밀번호를 정하지 않았다면, 지금 입력한 비밀번호가 내 비밀번호로 정해져요.' : edit ? '' : '이 비밀번호를 알아야 내 일정을 고칠 수 있어요.';
+  $('joinOk').textContent = edit ? '저장' : isNew ? '등록' : '로그인';
+  $('jErr').textContent = '';
+}
 function openJoin() {
-  const m = myInfo() || {};
-  const pick = members.filter(x => x.id !== me);
-  $('pickWrap').hidden = !pick.length || !!me;
-  $('pick').innerHTML = '<option value="">새로 등록</option>' + pick.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
-  $('joinT').textContent = me ? '내 정보 수정' : '내 정보 등록';
-  $('jName').value = m.name || ''; $('jOrg').value = m.org || ''; $('jRoom').value = m.room || ''; $('jSt').value = m.st || ''; $('jEn').value = m.en || '';
+  $('jPw').value = ''; $('jPw2').value = '';
+  if (me) {
+    const m = myInfo() || {};
+    $('jName').value = m.name || ''; $('jOrg').value = m.org || ''; $('jRoom').value = m.room || ''; $('jSt').value = m.st || ''; $('jEn').value = m.en || '';
+    joinShow('edit');
+  } else {
+    const last = lsGet(SESS_KEY + '-last');
+    $('pick').innerHTML = '<option value="">이름을 고르세요</option>' + members.map(x => `<option value="${esc(x.id)}" ${x.id === last ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + '<option value="__new">＋ 처음이에요 (새로 등록)</option>';
+    if (!members.length) $('pick').value = '__new';
+    ['jName', 'jOrg', 'jRoom', 'jSt', 'jEn'].forEach(id => { $(id).value = ''; });
+    joinShow($('pick').value === '__new' ? 'new' : 'login');
+  }
   $('joinDlg').showModal();
 }
-$('pick').addEventListener('change', () => {
-  const m = members.find(x => x.id === $('pick').value) || {};
-  ['name', 'org', 'room', 'st', 'en'].forEach(k => { $('j' + k[0].toUpperCase() + k.slice(1)).value = m[k] || ''; });
-});
+$('pick').addEventListener('change', () => joinShow($('pick').value === '__new' ? 'new' : 'login'));
 $('joinFrm').addEventListener('submit', async e => {
   e.preventDefault();
-  const name = $('jName').value.trim(); if (!name) return;
-  let en = $('jEn').value, st = $('jSt').value;
-  if (st && !en) { const d = new Date(st); d.setMonth(d.getMonth() + 36); d.setDate(d.getDate() - 1); en = ymd(d); }
-  const id = me || $('pick').value || uid();
+  const pw = $('jPw').value, pw2 = $('jPw2').value, say = m => { $('jErr').textContent = m; };
+  const info = () => {
+    let st = $('jSt').value, en = $('jEn').value;
+    if (st && !en) { const d = new Date(st); d.setMonth(d.getMonth() + 36); d.setDate(d.getDate() - 1); en = ymd(d); }
+    return { name: $('jName').value.trim(), org: $('jOrg').value.trim(), room: $('jRoom').value.trim(), st, en };
+  };
+  $('joinOk').disabled = true;
   try {
-    await store.saveMember({ id, name, org: $('jOrg').value.trim(), room: $('jRoom').value.trim(), st, en });
-    me = id; lsSet(ME_KEY, id); $('joinDlg').close(); render(); toast('저장했어요');
-  } catch (err) { banner('저장 실패: ' + err.message, true); }
+    if (joinMode === 'login') {
+      const id = $('pick').value; if (!id) return say('이름을 골라 주세요.');
+      const token = await store.login(id, pw);
+      lsSet(SESS_KEY + '-last', id); setSession(id, token); toast('로그인했어요');
+    } else if (joinMode === 'new') {
+      const m = info(); if (!m.name) return say(ERR.NAME_EMPTY);
+      if (pw.length < 4) return say(ERR.PW_SHORT);
+      if (pw !== pw2) return say('비밀번호 확인이 달라요.');
+      const r = await store.register({ ...m, pw });
+      lsSet(SESS_KEY + '-last', r.id); setSession(r.id, r.token); toast('등록했어요');
+    } else {
+      const m = info(); if (!m.name) return say(ERR.NAME_EMPTY);
+      if (pw && pw.length < 4) return say(ERR.PW_SHORT);
+      if (pw && pw !== pw2) return say('새 비밀번호 확인이 달라요.');
+      await store.saveMember({ ...m, newPw: pw || null });
+      toast(pw ? '저장했어요 (비밀번호 변경됨)' : '저장했어요');
+    }
+    $('joinDlg').close();
+  } catch (x) {
+    if (x.code === 'SESSION_INVALID') { setSession(null); openJoin(); }
+    say(x.message);
+  } finally { $('joinOk').disabled = false; }
 });
+$('logout').addEventListener('click', async () => { await store.logout(); setSession(null); $('joinDlg').close(); toast('로그아웃했어요'); });
 $('joinCancel').addEventListener('click', () => $('joinDlg').close());
 $('editMe').addEventListener('click', openJoin);
 
 /* ---------- 일정 ---------- */
-const run = p => Promise.resolve(p).catch(err => banner('저장 실패: ' + err.message, true));
+const run = p => Promise.resolve(p).catch(x => {
+  if (x.code === 'SESSION_INVALID') { setSession(null); openJoin(); }
+  banner('저장 실패: ' + x.message, true); store.refresh?.();
+});
 $('week').addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.stayin) saveStay(t.dataset.stayin);
@@ -387,11 +482,12 @@ try {
   banner('서버 연결 실패: ' + err.message + ' (지금은 로컬 모드로 실행 중)', true);
   store = localStore();
 }
+store.setToken(session?.token || null);
 let first = true;
 store.watchMembers(list => {
   members = list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
   if (me && !members.some(m => m.id === me) && !first) { /* 다른 기기에서 삭제된 경우 */ }
   render();
-  if (first) { first = false; if (!me || !members.some(m => m.id === me)) { me = members.some(m => m.id === me) ? me : null; openJoin(); } }
+  if (first) { first = false; if (me && !members.some(m => m.id === me)) setSession(null); if (!me) openJoin(); }
 });
 watchWeek();

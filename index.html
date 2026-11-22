@@ -17,6 +17,7 @@
 --paper:#f4efe1;--pink:#1f2723;--psub:#7a7a70;--rule:#cfc6b0;--stand:#1d2420;--ring:#2b2b2b;--card:light-dark(#f7f6f2,#1f2421);--acc:#c4511f;--line:light-dark(#d4d3ce,#333a36)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
 body{margin:0;background:var(--desk);color:var(--ink);font:16px/1.55 "Noto Sans KR",system-ui,sans-serif;overflow-x:clip}
 .wrap{max-width:1240px;margin:0 auto;padding:0 max(4vw,14px)}
 .serif{font-family:"Noto Serif KR",serif}
@@ -153,6 +154,10 @@ dialog h3{margin:0 0 14px;font-family:"Noto Serif KR",serif;font-size:21px}
 dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{background:var(--pink);color:var(--paper)}
 .f{display:grid;gap:10px}.f label{font-size:13px;color:var(--psub)}
 .f input,.f select{width:100%;min-height:44px;padding:0 10px;font:inherit;font-size:16px;color:var(--pink);background:#fffdf6;border:1px solid var(--rule);border-radius:4px}
+.fhint{margin:0;font-size:13px;color:var(--psub)}.fhint:empty,.ferr:empty{display:none}
+.ferr{margin:0;font-size:14px;color:#a02020;font-weight:500}
+.row .lo{margin-right:auto}
+textarea:disabled{opacity:.6}
 .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--stand);color:var(--paper);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
@@ -206,17 +211,23 @@ dialog button{border-color:var(--pink);color:var(--pink)}dialog button.pri{backg
   <div class="others" id="others"></div>
 </div></main>
 
-<dialog id="joinDlg"><form id="joinFrm">
-  <h3 id="joinT">내 정보 등록</h3>
+<dialog id="joinDlg"><form id="joinFrm" novalidate>
+  <h3 id="joinT">로그인</h3>
   <div class="f">
-    <div id="pickWrap"><label for="pick">이미 등록했다면 선택</label><select id="pick"></select></div>
-    <div><label for="jName">이름</label><input id="jName" required></div>
-    <div><label for="jOrg">복무기관</label><input id="jOrg" placeholder="○○교도소"></div>
-    <div><label for="jRoom">생활관 / 숙소</label><input id="jRoom" placeholder="2생활관 3호실"></div>
-    <div><label for="jSt">복무 시작일</label><input id="jSt" type="date"></div>
-    <div><label for="jEn">복무 종료일 (비우면 36개월 자동)</label><input id="jEn" type="date"></div>
+    <div id="whoWrap"><label for="pick">누구세요?</label><select id="pick"></select></div>
+    <div id="newWrap" class="f">
+      <div><label for="jName">이름</label><input id="jName" maxlength="30" autocomplete="name"></div>
+      <div><label for="jOrg">복무기관</label><input id="jOrg" maxlength="60" placeholder="○○교도소"></div>
+      <div><label for="jRoom">생활관 / 숙소</label><input id="jRoom" maxlength="60" placeholder="2생활관 3호실"></div>
+      <div><label for="jSt">복무 시작일</label><input id="jSt" type="date"></div>
+      <div><label for="jEn">복무 종료일 (비우면 36개월 자동)</label><input id="jEn" type="date"></div>
+    </div>
+    <div><label for="jPw" id="jPwL">비밀번호</label><input id="jPw" type="password" maxlength="64"></div>
+    <div id="pw2Wrap"><label for="jPw2">비밀번호 확인</label><input id="jPw2" type="password" maxlength="64" autocomplete="new-password"></div>
+    <p class="fhint" id="jHint"></p>
+    <p class="ferr" id="jErr" role="alert"></p>
   </div>
-  <div class="row"><button type="button" id="joinCancel">닫기</button><button class="pri" type="submit">저장</button></div>
+  <div class="row"><button type="button" id="logout" class="lo" hidden>로그아웃</button><button type="button" id="joinCancel">닫기</button><button class="pri" type="submit" id="joinOk">로그인</button></div>
 </form></dialog>
 
 <dialog id="evDlg"><form id="evFrm">
