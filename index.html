@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>대체복무 공유 캘린더</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0f1420);--ink:light-dark(#151a26,#e8ecf4);--sub:light-dark(#5b6478,#9aa4ba);
+--band:light-dark(#22407a,#16294d);--line:light-dark(#dfe3ea,#283146);--card:light-dark(#f6f7fa,#161d2c);--acc:#e8572a}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans KR",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(18px,3vw,36px) max(5vw,16px)}
+.wrap{max-width:1240px;margin:0 auto}
+header{background:var(--band);color:#fff}
+.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+h1{font-size:clamp(24px,4vw,38px);line-height:1.1;margin:0;text-wrap:balance}
+.grp{font-size:14px;opacity:.85}
+.me{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;font-size:15px}
+.bar{flex:1 1 220px;height:10px;background:#ffffff30;border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);width:0}
+.big{font-size:24px;font-weight:700;white-space:nowrap}
+header button{background:#ffffff1a;border-color:#ffffff40;color:#fff}
+.banner{background:#fff3cd;color:#5c4400;padding:10px max(5vw,16px);font-size:14px}
+.banner.err{background:#fde2e2;color:#7a1010}
+.members{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:0 12px;min-height:40px;background:var(--card);color:var(--ink);font-size:14px}
+.chip.on{border-color:var(--ink);font-weight:600}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.nav{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.nav h2{font-size:21px;margin:0 auto 0 0}
+button{font:inherit;font-size:15px;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:280px}
+.day.today{box-shadow:0 0 0 2px var(--acc) inset;border-color:var(--acc)}
+.dh{display:flex;justify-content:space-between;align-items:baseline}
+.dh b{font-size:17px}.dh span{font-size:13px;color:var(--sub)}
+.day.sat .dh b{color:#3b6fd4}.day.sun .dh b{color:#d23c3c}
+select,input,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.day select{width:100%;min-height:40px;padding:0 6px}
+.stays{display:flex;flex-wrap:wrap;gap:4px;font-size:12px}
+.stays span{border-radius:6px;padding:1px 6px;background:var(--bg);border:1px solid var(--line);white-space:nowrap}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;flex:1}
+li{border-radius:8px;padding:6px 8px;font-size:14px;display:flex;gap:6px;align-items:flex-start;background:var(--bg);border-left:4px solid var(--c,#999)}
+li .who{font-size:12px;color:var(--sub);display:block}
+li .t{font-weight:600;white-space:nowrap}
+li .x{margin-left:auto;border:0;background:none;min-height:24px;padding:0 4px;color:var(--sub);font-size:16px}
+li.done .m{text-decoration:line-through;opacity:.6}
+.empty{font-size:13px;color:var(--sub);border:0;background:none;padding:0}
+.add{width:100%;min-height:40px;font-size:14px}
+.memo{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:20px}
+.memo label{font-weight:600;display:block;margin-bottom:6px}
+textarea{width:100%;min-height:110px;padding:10px;resize:vertical}
+.others{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.others div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;white-space:pre-wrap}
+.others b{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--ink);width:min(440px,92vw);padding:20px}
+dialog::backdrop{background:#0008}
+dialog h3{margin:0 0 12px;font-size:20px}
+.f{display:grid;gap:10px}.f label{font-size:13px;color:var(--sub)}
+.f input,.f select{width:100%;min-height:44px;padding:0 10px}
+.row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+@media(max-width:900px){.week{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+@media(max-width:600px){.week{grid-template-columns:1fr}.day{min-height:0}}
+</style>
+</head>
+<body>
+<div id="banner" class="banner" hidden></div>
+<header class="band"><div class="wrap">
+  <div class="top">
+    <div><h1>대체복무 공유 캘린더</h1><div class="grp" id="grp"></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="invite">초대 링크 복사</button>
+      <button id="editMe">내 정보</button>
+    </div>
+  </div>
+  <div class="me"><span class="big" id="dday">D-?</span><div class="bar"><i id="pbar"></i></div><span id="ptxt">불러오는 중…</span></div>
+</div></header>
+
+<main class="band"><div class="wrap">
+  <div class="members" id="members"></div>
+  <div class="nav">
+    <h2 id="wk">주간</h2>
+    <button id="prev">◀ 이전 주</button>
+    <button id="now">이번 주</button>
+    <button id="next">다음 주 ▶</button>
+  </div>
+  <div class="week" id="week"></div>
+  <div class="memo">
+    <div><label for="goal">내 이번 주 목표</label><textarea id="goal" placeholder="예: 자격증 공부 하루 1시간"></textarea></div>
+    <div><label for="memo">내 메모 / 회고</label><textarea id="memo" placeholder="이번 주에 있었던 일, 다음 주에 챙길 것"></textarea></div>
+  </div>
+  <div class="others" id="others"></div>
+</div></main>
+
+<dialog id="joinDlg"><form id="joinFrm">
+  <h3 id="joinT">내 정보 등록</h3>
+  <div class="f">
+    <div id="pickWrap"><label for="pick">이미 등록했다면 선택</label><select id="pick"></select></div>
+    <div><label for="jName">이름</label><input id="jName" required></div>
+    <div><label for="jOrg">복무기관</label><input id="jOrg" placeholder="○○교도소"></div>
+    <div><label for="jRoom">생활관 / 숙소</label><input id="jRoom" placeholder="2생활관 3호실"></div>
+    <div><label for="jSt">복무 시작일</label><input id="jSt" type="date"></div>
+    <div><label for="jEn">복무 종료일 (비우면 36개월 자동)</label><input id="jEn" type="date"></div>
+  </div>
+  <div class="row"><button type="button" id="joinCancel">닫기</button><button class="pri" type="submit">저장</button></div>
+</form></dialog>
+
+<dialog id="evDlg"><form id="evFrm">
+  <h3 id="evT">일정 추가</h3>
+  <div class="f">
+    <div><label for="fTime">시간 (선택)</label><input id="fTime" type="time"></div>
+    <div><label for="fText">내용</label><input id="fText" required></div>
+    <div><label for="fKind">분류</label><select id="fKind">
+      <option value="근무">근무</option><option value="교육·훈련">교육·훈련</option><option value="개인">개인 일정</option><option value="외출·외박">외출·외박·휴가</option><option value="공지">공지 (전체)</option>
+    </select></div>
+  </div>
+  <div class="row"><button type="button" id="evCancel">취소</button><button class="pri" type="submit">저장</button></div>
+</form></dialog>
+
+<div class="toast" id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
